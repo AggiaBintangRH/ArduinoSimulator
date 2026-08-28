@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arduino Simulator</title>
+    <link rel="stylesheet" href="/src/ui/style.css" />
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">◉</span>
+        <strong>Arduino Simulator</strong>
+      </div>
+
+      <div class="toolbar-group">
+        <button id="btn-run" class="primary" title="Start simulation (Ctrl+Enter)">
+          <span class="icon">▶</span> Start
+        </button>
+        <button id="btn-stop" disabled title="Stop simulation">
+          <span class="icon">■</span> Stop
+        </button>
+        <button id="btn-compile" title="Compile the sketch">Compile</button>
+      </div>
+
+      <div class="toolbar-group">
+        <label class="file-button" title="Load a prebuilt .hex file">
+          Load .hex
+          <input type="file" id="input-hex" accept=".hex" hidden />
+        </label>
+        <select id="select-example" title="Load an example project"></select>
+      </div>
+
+      <div class="toolbar-group right">
+        <span id="status" class="status">idle</span>
+        <button id="btn-export" title="Download this project">Export</button>
+        <label class="file-button" title="Open a project file">
+          Import
+          <input type="file" id="input-project" accept=".json" hidden />
+        </label>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="pane pane-code">
+        <div class="pane-tabs">
+          <button class="tab active" data-tab="sketch">sketch.ino</button>
+          <button class="tab" data-tab="diagram">diagram.json</button>
+          <button class="tab" data-tab="build">Build log</button>
+        </div>
+        <div class="pane-body">
+          <textarea id="editor-sketch" class="code-area" spellcheck="false"></textarea>
+          <textarea id="editor-diagram" class="code-area" spellcheck="false" hidden></textarea>
+          <pre id="build-log" class="code-area log" hidden></pre>
+        </div>
+      </section>
+
+      <section class="pane pane-diagram">
+        <div class="canvas-host" id="canvas-host"></div>
+        <aside class="inspector" id="inspector" hidden>
+          <header>
+            <span id="inspector-title">Part</span>
+            <button id="inspector-close" class="icon-button" aria-label="Close">×</button>
+          </header>
+          <div id="inspector-body"></div>
+        </aside>
+        <div class="canvas-hint">
+          <kbd>A</kbd> add · <kbd>R</kbd> rotate · <kbd>D</kbd> duplicate ·
+          <kbd>Del</kbd> remove · scroll to zoom
+        </div>
+      </section>
+    </main>
+
+    <section class="pane pane-serial" id="serial-pane">
+      <div class="pane-tabs">
+        <button class="tab active" data-serial-tab="monitor">Serial Monitor</button>
+        <button class="tab" data-serial-tab="problems">
+          Problems <span id="problem-count" class="badge" hidden>0</span>
+        </button>
+        <div class="spacer"></div>
+        <button id="btn-clear-serial" class="link-button">Clear</button>
+      </div>
+      <div class="pane-body">
+        <pre id="serial-output" class="serial-output"></pre>
+        <ul id="problem-list" class="problem-list" hidden></ul>
+      </div>
+      <form class="serial-input" id="serial-form">
+        <input
+          id="serial-input"
+          type="text"
+          placeholder="Send to the sketch and press Enter"
+          autocomplete="off"
+        />
+        <button type="submit">Send</button>
+      </form>
+    </section>
+
+    <dialog id="part-picker">
+      <h2>Add a part</h2>
+      <input id="part-search" type="search" placeholder="Search parts…" autocomplete="off" />
+      <ul id="part-list"></ul>
+      <form method="dialog"><button>Cancel</button></form>
+    </dialog>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

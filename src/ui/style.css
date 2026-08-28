@@ -1,0 +1,516 @@
+:root {
+  --bg: #0f1419;
+  --bg-panel: #161c23;
+  --bg-raised: #1d252e;
+  --border: #2a333e;
+  --fg: #dbe4ef;
+  --fg-dim: #8b98a8;
+  --accent: #38bdf8;
+  --accent-dim: #0b7fa8;
+  --danger: #f87171;
+  --warning: #fbbf24;
+  --ok: #4ade80;
+  --grid: #253039;
+  --canvas-bg: #12181e;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  --font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --bg: #f4f6f9;
+    --bg-panel: #ffffff;
+    --bg-raised: #eef1f5;
+    --border: #d5dce4;
+    --fg: #16202b;
+    --fg-dim: #5d6b7a;
+    --accent: #0b7fa8;
+    --accent-dim: #38bdf8;
+    --grid: #d8dfe7;
+    --canvas-bg: #fbfcfd;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  overflow: hidden;
+}
+
+body {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+/* ---- toolbar ---- */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 12px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.brand .logo {
+  color: var(--accent);
+  font-size: 18px;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar-group.right {
+  margin-left: auto;
+}
+
+button,
+.file-button,
+select {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+button:hover:not(:disabled),
+.file-button:hover,
+select:hover {
+  border-color: var(--accent-dim);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
+  color: #fff;
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+.icon {
+  font-size: 11px;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  padding: 4px 8px;
+}
+
+.link-button:hover {
+  color: var(--accent);
+}
+
+.icon-button {
+  background: none;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 6px;
+  color: var(--fg-dim);
+}
+
+.status {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-dim);
+  min-width: 12ch;
+  text-align: right;
+}
+
+.status.running {
+  color: var(--ok);
+}
+
+.status.error {
+  color: var(--danger);
+}
+
+.status.busy {
+  color: var(--warning);
+}
+
+/* ---- layout ---- */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 38%) 1fr;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--bg-panel);
+}
+
+.pane-code {
+  border-right: 1px solid var(--border);
+}
+
+.pane-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.pane-tabs .spacer {
+  flex: 1;
+}
+
+.tab {
+  background: none;
+  border: none;
+  border-radius: 5px 5px 0 0;
+  padding: 6px 12px;
+  color: var(--fg-dim);
+  font-size: 13px;
+}
+
+.tab.active {
+  color: var(--fg);
+  background: var(--bg-panel);
+  border-bottom: 2px solid var(--accent);
+}
+
+.pane-body {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+}
+
+.code-area {
+  flex: 1;
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  padding: 12px;
+  background: var(--bg-panel);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+  tab-size: 2;
+  overflow: auto;
+}
+
+.code-area.log {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--fg-dim);
+}
+
+/* ---- diagram ---- */
+
+.pane-diagram {
+  position: relative;
+  background: var(--canvas-bg);
+}
+
+.canvas-host {
+  position: absolute;
+  inset: 0;
+}
+
+.diagram-canvas {
+  cursor: grab;
+}
+
+.diagram-canvas:active {
+  cursor: grabbing;
+}
+
+.part {
+  cursor: pointer;
+}
+
+.part.selected > g:first-child {
+  outline: 2px dashed var(--accent);
+}
+
+.pin {
+  fill: #b8860b;
+  stroke: #6b4e00;
+  stroke-width: 0.5;
+  opacity: 0.55;
+  cursor: crosshair;
+  transition: opacity 0.1s, r 0.1s;
+}
+
+.pin:hover {
+  opacity: 1;
+  fill: var(--accent);
+  r: 6;
+}
+
+.wire {
+  pointer-events: stroke;
+}
+
+.canvas-hint {
+  position: absolute;
+  bottom: 8px;
+  left: 12px;
+  font-size: 11px;
+  color: var(--fg-dim);
+  pointer-events: none;
+  background: color-mix(in srgb, var(--bg-panel) 80%, transparent);
+  padding: 4px 8px;
+  border-radius: 5px;
+}
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+/* ---- inspector ---- */
+
+.inspector {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 240px;
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.inspector header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.inspector-row {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+}
+
+.inspector-row label {
+  color: var(--fg-dim);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inspector-row input,
+.inspector-row select {
+  width: 100%;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 12px;
+  background: var(--bg-raised);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.inspector-actions {
+  display: flex;
+  gap: 6px;
+  padding: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.inspector-actions button {
+  flex: 1;
+  font-size: 12px;
+  padding: 5px;
+}
+
+/* ---- serial ---- */
+
+.pane-serial {
+  height: 200px;
+  border-top: 1px solid var(--border);
+}
+
+.serial-output {
+  flex: 1;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.serial-input {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.serial-input input {
+  flex: 1;
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background: var(--bg-raised);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.problem-list {
+  flex: 1;
+  margin: 0;
+  padding: 6px 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.problem-list li {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+  display: flex;
+  gap: 8px;
+}
+
+.problem-list .sev {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.problem-list .sev.error {
+  color: var(--danger);
+}
+
+.problem-list .sev.warning {
+  color: var(--warning);
+}
+
+.badge {
+  background: var(--danger);
+  color: #fff;
+  border-radius: 9px;
+  padding: 0 6px;
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+/* ---- part picker ---- */
+
+dialog {
+  background: var(--bg-panel);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  width: min(420px, 90vw);
+}
+
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+dialog h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+#part-search {
+  width: 100%;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  font: inherit;
+  background: var(--bg-raised);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+#part-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  max-height: 300px;
+  overflow: auto;
+}
+
+#part-list li {
+  padding: 7px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+#part-list li:hover {
+  background: var(--bg-raised);
+  color: var(--accent);
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+
+  .pane-code {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}

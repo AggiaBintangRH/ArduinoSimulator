@@ -60,6 +60,7 @@ export class Simulation {
   private running = false;
   private rafHandle: ReturnType<typeof setTimeout> | null = null;
   private speedRatio = 1;
+  private headroomRatio = 1;
 
   constructor(diagram: Diagram) {
     this.build(diagram);
@@ -258,9 +259,22 @@ export class Simulation {
     return this.scheduler.simMillis;
   }
 
-  /** Ratio of simulated time to wall time over the last frame. 1 = realtime. */
+  /**
+   * Achieved ratio of simulated time to wall-clock time. 1 = realtime.
+   *
+   * Measured across whole frames including the pacing delay, so a machine with
+   * spare capacity reads ~1.0 rather than reporting its headroom.
+   */
   get speed(): number {
     return this.speedRatio;
+  }
+
+  /**
+   * How much faster than realtime this machine could run, if unpaced.
+   * Useful for a "this diagram is too heavy" warning; >1 means spare capacity.
+   */
+  get headroom(): number {
+    return this.headroomRatio;
   }
 
   get isRunning(): boolean {
@@ -279,15 +293,34 @@ export class Simulation {
     if (this.running) return;
     this.running = true;
 
+    let lastWall = now();
+    let lastSim = this.scheduler.simNanos;
+
     const tick = () => {
       if (!this.running) return;
       const wallStart = now();
       this.runSimMillis(frameMillis);
-      const wallElapsed = now() - wallStart;
-      this.speedRatio = wallElapsed > 0 ? frameMillis / wallElapsed : 1;
+      const wallEnd = now();
+      const busy = wallEnd - wallStart;
+
+      // Headroom: how much sim time we produced per unit of busy time.
+      if (busy > 0) {
+        this.headroomRatio = frameMillis / busy;
+      }
+
+      // Achieved speed: sim time advanced against real elapsed time, measured
+      // across the full frame (work + pacing delay) so a fast machine that is
+      // deliberately sleeping reads as 1.0, not as its headroom.
+      const wallDelta = wallEnd - lastWall;
+      if (wallDelta >= 250) {
+        const simDelta = Number(this.scheduler.simNanos - lastSim) / 1e6;
+        this.speedRatio = simDelta / wallDelta;
+        lastWall = wallEnd;
+        lastSim = this.scheduler.simNanos;
+      }
 
       // Yield to the host, leaving room for rendering.
-      const delay = Math.max(0, frameMillis - wallElapsed);
+      const delay = Math.max(0, frameMillis - busy);
       this.rafHandle = setTimeout(tick, delay);
     };
     this.rafHandle = setTimeout(tick, 0);
