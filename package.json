@@ -1,0 +1,23 @@
+{
+  "name": "arduino-simulator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser-based Arduino/electronics simulator with Wokwi-compatible diagram.json",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "avr8js": "^0.18.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.4"
+  }
+}
