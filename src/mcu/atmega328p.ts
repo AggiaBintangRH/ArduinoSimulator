@@ -124,10 +124,24 @@ export class ATmega328P {
 
   private createPins(names: readonly string[]): void {
     for (const name of names) {
-      // Power rails start as plain inputs; the board part drives them if wired.
       const pin = new Pin('__mcu__', name, PinMode.Input);
       this.pins.set(name, pin);
       this.netlist.isolate(pin);
+    }
+    // Power rails are real drivers: a button to GND only pulls its net low
+    // because GND is actually held low. Leaving these floating would silently
+    // break every switch and pull-down in a diagram.
+    for (const name of names) {
+      if (!POWER_PINS.has(name)) continue;
+      const pin = this.pins.get(name)!;
+      if (name.startsWith('GND')) {
+        pin.setMode(PinMode.Output);
+        pin.write(LOW);
+      } else if (name === '5V' || name === 'VIN' || name === '3.3V') {
+        pin.setMode(PinMode.Output);
+        pin.write(HIGH);
+      }
+      // AREF is left as an input: it is a reference, not a supply.
     }
   }
 
@@ -279,12 +293,19 @@ export class ATmega328P {
    */
   private runCpuUntilNanos(deadline: bigint): void {
     const targetCycles = this.nanosToCycles(deadline);
-    const { cpu, netlist } = this;
+    const { cpu, netlist, scheduler } = this;
     while (cpu.cycles < targetCycles) {
       avrInstruction(cpu);
       cpu.tick();
-      netlist.settle();
+      // Only pay for the cycles->nanos conversion when a pin actually changed.
+      // Parts read simNanos inside their watch callbacks to measure pulse
+      // widths, so the clock has to be current before those callbacks run.
+      if (netlist.hasPending) {
+        scheduler.syncTime(this.cyclesToNanos(cpu.cycles));
+        netlist.settle();
+      }
     }
+    scheduler.syncTime(this.cyclesToNanos(cpu.cycles));
   }
 
   /**

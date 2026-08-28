@@ -197,6 +197,22 @@ export class Scheduler {
   }
 
   /**
+   * Move the clock forward without firing events.
+   *
+   * The MCU is the clock master and derives time from its cycle counter, but it
+   * runs many instructions between scheduler events. Without this, every pin
+   * edge inside one run would carry the same timestamp and any part that
+   * measures pulse widths (LED brightness, buzzer pitch, WS2812) would see zero
+   * elapsed time.
+   *
+   * Safe because callers only run the CPU up to the next scheduled event, so
+   * nothing can come due during the interval being skipped.
+   */
+  syncTime(nanos: bigint): void {
+    if (nanos > this.nanos) this.nanos = nanos;
+  }
+
+  /**
    * Fire exactly one event, moving the clock to its scheduled time.
    * Returns false when nothing was queued.
    */

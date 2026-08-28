@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { makeBoard, Probe, Driver, asm } from './helpers/board.js';
-import { HIGH, LOW, PinMode } from '../src/sim/net.js';
+import { HIGH, LOW, PinMode, Pin, Edge } from '../src/sim/net.js';
 import { toHex } from '../src/mcu/hex.js';
 
 // I/O-space addresses (data space minus 0x20)
@@ -196,6 +196,43 @@ describe('ATmega328P timing', () => {
     const { board } = makeBoard(undefined, 16_000_000);
     expect(board.cyclesToNanos(16_000_000)).toBe(1_000_000_000n);
     expect(board.nanosToCycles(1_000_000_000n)).toBe(16_000_000);
+  });
+
+  /**
+   * Regression: the scheduler clock used to advance only at chunk boundaries,
+   * so every pin edge inside one CPU run carried an identical timestamp. Any
+   * part measuring a pulse width from inside a watch callback saw zero elapsed
+   * time, which silently broke LED brightness, buzzer pitch and WS2812.
+   */
+  it('advances the sim clock between pin edges inside one run', () => {
+    const ctx = makeBoard(`
+      ldi r16, 0x20
+      out 0x04, r16
+    loop:
+      in r17, 0x05
+      eor r17, r16
+      out 0x05, r17
+      rjmp loop
+    `);
+
+    // Observe the way a real part does: a pin on the same net, with a watch
+    // that reads the clock at the moment it is called.
+    const observed: bigint[] = [];
+    const watcher = new Pin('__watch__', 'w', PinMode.Input);
+    ctx.netlist.connect(watcher, ctx.board.pin('13'));
+    watcher.watchPin(Edge.Both, () => observed.push(ctx.scheduler.simNanos));
+
+    ctx.board.advanceMillis(1);
+
+    expect(observed.length).toBeGreaterThan(10);
+    // Each edge must carry a strictly later timestamp than the one before.
+    for (let i = 1; i < observed.length; i++) {
+      expect(observed[i]).toBeGreaterThan(observed[i - 1]);
+    }
+    // The 5-cycle toggle loop is 312.5ns per edge at 16MHz.
+    const gap = Number(observed[2] - observed[1]);
+    expect(gap).toBeGreaterThan(100);
+    expect(gap).toBeLessThan(1000);
   });
 
   it('interleaves part timers with CPU execution', () => {

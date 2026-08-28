@@ -35,6 +35,8 @@ export interface PartContext {
 
   adcRead(name: string): number;
   dacWrite(name: string, volts: number | null): void;
+  /** True when nothing on the pin's net is driving it. */
+  pinFloating(name: string): boolean;
 
   timerInit(callback: () => void): number;
   timerStart(timerId: number, micros: number, repeat?: boolean): void;
@@ -180,6 +182,10 @@ export class PartRuntime implements PartContext {
 
   dacWrite(name: string, volts: number | null): void {
     this.pin(name).dacWrite(volts);
+  }
+
+  pinFloating(name: string): boolean {
+    return this.pin(name).net?.floating ?? true;
   }
 
   timerInit(callback: () => void): number {

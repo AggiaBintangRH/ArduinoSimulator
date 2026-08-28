@@ -376,6 +376,11 @@ export class NetList implements NetOwner {
     this.dirtyNets.add(net);
   }
 
+  /** True when at least one net is waiting to propagate. */
+  get hasPending(): boolean {
+    return this.dirtyNets.size > 0;
+  }
+
   markDirty(net: Net): void {
     net.invalidate();
   }

@@ -49,7 +49,7 @@ export class Probe {
   readonly pin: Pin;
   readonly transitions: Transition[] = [];
 
-  constructor(private ctx: TestBoard, pinName: string) {
+  constructor(ctx: TestBoard, pinName: string) {
     this.pin = new Pin('__probe__', `probe_${pinName}`, PinMode.Input);
     ctx.netlist.connect(this.pin, ctx.board.pin(pinName));
     this.pin.watchPin(Edge.Both, (value) => {
