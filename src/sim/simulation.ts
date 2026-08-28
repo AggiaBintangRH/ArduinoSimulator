@@ -55,6 +55,12 @@ export class Simulation {
   readonly latestPartEvents = new Map<string, PartEvent>();
   /** Lines written to the parts console. */
   onPartLog: ((partId: string, message: string) => void) | null = null;
+  /**
+   * A problem raised while running, as opposed to while building.
+   * Without this a run-time failure stops the simulation silently and the UI
+   * goes on claiming it is running.
+   */
+  onProblem: ((problem: SimulationProblem) => void) | null = null;
 
   private pinsByPart = new Map<string, Map<string, Pin>>();
   private running = false;
@@ -196,7 +202,7 @@ export class Simulation {
     try {
       this.netlist.settle();
     } catch (e) {
-      this.problems.push({ severity: 'error', message: (e as Error).message });
+      this.raise({ severity: 'error', message: (e as Error).message });
     }
   }
 
@@ -242,9 +248,15 @@ export class Simulation {
     try {
       this.board.advanceNanos(nanos);
     } catch (e) {
-      this.running = false;
-      this.problems.push({ severity: 'error', message: (e as Error).message });
+      this.pause();
+      this.raise({ severity: 'error', message: (e as Error).message });
     }
+  }
+
+  /** Record a problem and push it to any listener. */
+  private raise(problem: SimulationProblem): void {
+    this.problems.push(problem);
+    this.onProblem?.(problem);
   }
 
   runSimMillis(ms: number): void {

@@ -78,6 +78,15 @@ export class HttpCompiler implements Compiler {
       if (!res.ok) {
         return { available: false, reason: `compile service returned ${res.status}` };
       }
+      // A production build has no compile endpoint, so the SPA fallback serves
+      // index.html here. Report that plainly instead of a JSON parse error.
+      const contentType = res.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/json')) {
+        return {
+          available: false,
+          reason: 'the compile service only runs under "npm run dev"',
+        };
+      }
       return (await res.json()) as CompilerStatus;
     } catch (e) {
       return { available: false, reason: (e as Error).message };

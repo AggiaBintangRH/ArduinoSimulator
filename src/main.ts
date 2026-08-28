@@ -134,6 +134,15 @@ class App {
     const sim = new Simulation(this.editor.value);
     sim.onSerialByte = (b) => this.serial.writeByte(b);
     sim.onPartEvent = (id, event) => this.canvas.updatePartState(id, event);
+    sim.onProblem = (problem) => {
+      // A failure mid-run must stop the UI claiming it is still running.
+      this.setStatus(problem.message, 'error');
+      this.showProblems(
+        sim.problems.map((p) => ({ severity: p.severity, message: p.message })),
+      );
+      $<HTMLButtonElement>('btn-run').disabled = false;
+      $<HTMLButtonElement>('btn-stop').disabled = true;
+    };
     this.canvas.applyStates(sim.latestPartEvents as Map<string, PartEvent>);
 
     this.showProblems(sim.problems.map((p) => ({ severity: p.severity, message: p.message })));
@@ -183,9 +192,16 @@ class App {
   private pollSpeed(): void {
     const tick = () => {
       if (!this.sim?.isRunning) return;
-      const pct = Math.round(this.sim.speed * 100);
-      this.statusEl.textContent = pct >= 90 ? 'running' : `running ${pct}% (slow)`;
-      this.statusEl.className = pct >= 90 ? 'status running' : 'status busy';
+      // Browsers clamp timers to about 1/second in a hidden tab, which stalls
+      // the run loop. Say so, rather than blaming the machine for being slow.
+      if (document.hidden) {
+        this.statusEl.textContent = 'running (background)';
+        this.statusEl.className = 'status busy';
+      } else {
+        const pct = Math.round(this.sim.speed * 100);
+        this.statusEl.textContent = pct >= 90 ? 'running' : `running ${pct}% (slow)`;
+        this.statusEl.className = pct >= 90 ? 'status running' : 'status busy';
+      }
       window.setTimeout(tick, 500);
     };
     window.setTimeout(tick, 500);
