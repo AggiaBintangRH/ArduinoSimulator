@@ -4,3 +4,14 @@ dist/
 *.local
 .DS_Store
 Thumbs.db
+
+# Local assistant configuration
+.claude/
+.codex/
+.agents/
+
+# Local environment and debug output
+.env
+.env.*
+!.env.example
+*.log
