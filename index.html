@@ -7,6 +7,20 @@
     <link rel="stylesheet" href="/src/ui/style.css" />
   </head>
   <body>
+    <section class="dashboard" id="dashboard" hidden>
+      <div class="dashboard-inner">
+        <header class="dashboard-header">
+          <div class="brand">
+            <span class="logo" aria-hidden="true">◉</span>
+            <strong>Arduino Simulator</strong>
+          </div>
+          <h1>Choose a board</h1>
+          <p>Pick the board to build on. You can come back here at any time.</p>
+        </header>
+        <div class="board-grid" id="board-grid"></div>
+      </div>
+    </section>
+
     <header class="toolbar">
       <div class="brand">
         <span class="logo" aria-hidden="true">◉</span>
@@ -14,16 +28,25 @@
       </div>
 
       <div class="toolbar-group">
-        <button id="btn-run" class="primary" title="Start simulation (Ctrl+Enter)">
+        <button id="btn-dashboard" title="Back to the board list">Boards</button>
+      </div>
+
+      <div class="toolbar-group">
+        <button id="btn-run" class="primary" title="Build the sketch and run it (Ctrl+Enter)">
           <span class="icon">▶</span> Start
         </button>
         <button id="btn-stop" disabled title="Stop simulation">
           <span class="icon">■</span> Stop
         </button>
-        <button id="btn-compile" title="Compile the sketch">Compile</button>
       </div>
 
       <div class="toolbar-group">
+        <button id="btn-mute" title="Mute the buzzer" aria-pressed="false">
+          <span class="icon" aria-hidden="true">&#128266;</span>
+        </button>
+        <button id="btn-libraries" title="Install and manage Arduino libraries">
+          Libraries
+        </button>
         <label class="file-button" title="Load a prebuilt .hex file">
           Load .hex
           <input type="file" id="input-hex" accept=".hex" hidden />
@@ -43,20 +66,35 @@
 
     <main class="layout">
       <section class="pane pane-code">
-        <div class="pane-tabs">
-          <button class="tab active" data-tab="sketch">sketch.ino</button>
-          <button class="tab" data-tab="diagram">diagram.json</button>
-          <button class="tab" data-tab="build">Build log</button>
+        <div class="pane-tabs" id="code-tabs">
+          <!-- Tabs are rendered from the project: a sketch is a directory, so
+               the list grows as files are added. -->
+          <button id="btn-add-file" class="tab tab-add" title="Add a file to this sketch">
+            +
+          </button>
         </div>
         <div class="pane-body">
           <textarea id="editor-sketch" class="code-area" spellcheck="false"></textarea>
+          <textarea id="editor-file" class="code-area" spellcheck="false" hidden></textarea>
           <textarea id="editor-diagram" class="code-area" spellcheck="false" hidden></textarea>
           <pre id="build-log" class="code-area log" hidden></pre>
         </div>
       </section>
 
+      <div
+        class="splitter splitter-x"
+        id="split-code"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize the editor. Double-click to reset."
+        tabindex="0"
+      ></div>
+
       <section class="pane pane-diagram">
         <div class="canvas-host" id="canvas-host"></div>
+        <button id="btn-add-part" class="canvas-button" title="Add a part to the diagram">
+          <span class="icon" aria-hidden="true">+</span> Add part
+        </button>
         <aside class="inspector" id="inspector" hidden>
           <header>
             <span id="inspector-title">Part</span>
@@ -65,11 +103,20 @@
           <div id="inspector-body"></div>
         </aside>
         <div class="canvas-hint">
-          <kbd>A</kbd> add · <kbd>R</kbd> rotate · <kbd>D</kbd> duplicate ·
-          <kbd>Del</kbd> remove · scroll to zoom
+          <kbd>R</kbd> rotate · <kbd>D</kbd> duplicate · <kbd>Del</kbd> remove ·
+          drag to move · left-drag empty space to select · middle-drag to pan · scroll to zoom
         </div>
       </section>
     </main>
+
+    <div
+      class="splitter splitter-y"
+      id="split-serial"
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label="Resize the serial monitor. Double-click to reset."
+      tabindex="0"
+    ></div>
 
     <section class="pane pane-serial" id="serial-pane">
       <div class="pane-tabs">
@@ -94,6 +141,30 @@
         <button type="submit">Send</button>
       </form>
     </section>
+
+    <dialog id="file-adder">
+      <h2>Add a file</h2>
+      <form id="file-form">
+        <input
+          id="file-name"
+          type="text"
+          placeholder="pitches.h"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <p id="file-error" class="file-error" role="alert"></p>
+        <div class="file-actions">
+          <label class="file-button" title="Add a file from disk">
+            Upload…
+            <input type="file" id="input-sketch-file" accept=".h,.hpp,.c,.cc,.cpp,.ino,.S" hidden />
+          </label>
+          <button type="button" id="btn-file-cancel">Cancel</button>
+          <button type="submit" class="primary">Create</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="library-manager"></dialog>
 
     <dialog id="part-picker">
       <h2>Add a part</h2>

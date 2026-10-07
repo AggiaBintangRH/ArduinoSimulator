@@ -7,102 +7,80 @@
  * falls back to loading prebuilt .hex files.
  */
 
-import { spawn } from 'node:child_process';
-import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, rm, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Plugin, Connect } from 'vite';
-import type { IncomingMessage, ServerResponse } from 'node:http';
+import {
+  run,
+  detect,
+  sendJson,
+  readJsonBody,
+  parseLibList,
+  missingLibraries,
+  isLibrarySpec,
+  acceptedSketchFiles,
+  RequestBodyError,
+  type SketchFile,
+  type CliStatus,
+} from './arduino-cli.js';
 
 const DEFAULT_FQBN = 'arduino:avr:uno';
-/** Compilation is slow but must not hang the dev server forever. */
-const COMPILE_TIMEOUT_MS = 120_000;
 
-interface RunResult {
-  code: number | null;
-  stdout: string;
-  stderr: string;
-  timedOut: boolean;
-}
-
-function run(command: string, args: string[], timeoutMs = COMPILE_TIMEOUT_MS): Promise<RunResult> {
-  return new Promise((resolve) => {
-    // shell:false and an argument array keep sketch text out of shell parsing.
-    const child = spawn(command, args, { shell: false });
-    let stdout = '';
-    let stderr = '';
-    let timedOut = false;
-
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill('SIGKILL');
-    }, timeoutMs);
-
-    child.stdout?.on('data', (d) => (stdout += String(d)));
-    child.stderr?.on('data', (d) => (stderr += String(d)));
-    child.on('error', (err) => {
-      clearTimeout(timer);
-      resolve({ code: null, stdout, stderr: stderr + String(err), timedOut });
-    });
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      resolve({ code, stdout, stderr, timedOut });
-    });
+/**
+ * Which of the sketch's libraries the toolchain does not have.
+ *
+ * arduino-cli finds installed libraries by itself, so the project's list is
+ * not passed to it - it is checked against it. Without this a missing library
+ * surfaces as `No such file or directory` on an `#include`, which reads like
+ * a mistake in the sketch rather than a library that was never installed.
+ */
+async function findMissingLibraries(libraries: readonly string[]): Promise<string[]> {
+  if (libraries.length === 0) return [];
+  const result = await run('arduino-cli', ['lib', 'list', '--format', 'json'], {
+    timeoutMs: 30_000,
   });
-}
-
-async function detect(): Promise<{ available: boolean; version?: string; reason?: string }> {
-  const result = await run('arduino-cli', ['version'], 10_000);
-  if (result.code === 0) {
-    return { available: true, version: result.stdout.trim().split('\n')[0] };
+  if (result.code !== 0) return [];
+  try {
+    return missingLibraries(libraries, parseLibList(result.stdout));
+  } catch {
+    // An unreadable list is no reason to block a build that might well work.
+    return [];
   }
-  return {
-    available: false,
-    reason: 'arduino-cli is not installed or not on PATH',
-  };
-}
-
-function readJsonBody(req: IncomingMessage): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    let body = '';
-    let size = 0;
-    req.on('data', (chunk) => {
-      size += chunk.length;
-      // A sketch is text; anything this large is not a legitimate request.
-      if (size > 2_000_000) {
-        reject(new Error('request body too large'));
-        req.destroy();
-        return;
-      }
-      body += chunk;
-    });
-    req.on('end', () => {
-      try {
-        resolve(JSON.parse(body));
-      } catch (e) {
-        reject(e);
-      }
-    });
-    req.on('error', reject);
-  });
-}
-
-function sendJson(res: ServerResponse, status: number, payload: unknown): void {
-  res.statusCode = status;
-  res.setHeader('content-type', 'application/json');
-  res.end(JSON.stringify(payload));
 }
 
 async function compileSketch(
   sketch: string,
   fqbn: string,
+  libraries: readonly string[],
+  files: readonly SketchFile[],
 ): Promise<{ ok: boolean; hex?: string; output: string }> {
+  const missing = await findMissingLibraries(libraries);
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      output:
+        `This project needs ${missing.length === 1 ? 'a library' : 'libraries'} that ` +
+        `${missing.length === 1 ? 'is' : 'are'} not installed:\n` +
+        missing.map((name) => `  - ${name}`).join('\n') +
+        `\n\nInstall ${missing.length === 1 ? 'it' : 'them'} with the Libraries button, then build again.`,
+    };
+  }
+
   const dir = await mkdtemp(join(tmpdir(), 'arduino-sim-'));
   const sketchDir = join(dir, 'sketch');
   const buildDir = join(dir, 'build');
   try {
-    await mkdtempSafe(sketchDir);
+    await mkdir(sketchDir, { recursive: true });
     await writeFile(join(sketchDir, 'sketch.ino'), sketch, 'utf8');
+    /*
+     * A sketch is a directory, so `#include "pitches.h"` resolves as long as
+     * the header sits beside the .ino. The names were checked before getting
+     * here; `join` is given a bare file name, never a path from the request.
+     */
+    for (const file of files) {
+      await writeFile(join(sketchDir, file.name), file.content, 'utf8');
+    }
 
     const result = await run('arduino-cli', [
       'compile',
@@ -134,13 +112,8 @@ async function compileSketch(
   }
 }
 
-async function mkdtempSafe(path: string): Promise<void> {
-  const { mkdir } = await import('node:fs/promises');
-  await mkdir(path, { recursive: true });
-}
-
 export function arduinoCompilePlugin(): Plugin {
-  let cachedStatus: Awaited<ReturnType<typeof detect>> | null = null;
+  let cachedStatus: CliStatus | null = null;
 
   const middleware: Connect.NextHandleFunction = (req, res, next) => {
     const url = req.url ?? '';
@@ -167,7 +140,12 @@ export function arduinoCompilePlugin(): Plugin {
           return;
         }
 
-        const body = (await readJsonBody(req)) as { sketch?: unknown; fqbn?: unknown };
+        const body = (await readJsonBody(req)) as {
+          sketch?: unknown;
+          fqbn?: unknown;
+          libraries?: unknown;
+          files?: unknown;
+        };
         if (typeof body.sketch !== 'string') {
           sendJson(res, 400, { error: 'sketch must be a string' });
           return;
@@ -176,11 +154,17 @@ export function arduinoCompilePlugin(): Plugin {
         // arbitrary text to the CLI.
         const fqbn =
           typeof body.fqbn === 'string' && /^[\w:.-]+$/.test(body.fqbn) ? body.fqbn : DEFAULT_FQBN;
+        const files = acceptedSketchFiles(body.files);
+        const libraries = Array.isArray(body.libraries)
+          ? body.libraries.filter((l): l is string => typeof l === 'string' && isLibrarySpec(l))
+          : [];
 
-        const result = await compileSketch(body.sketch, fqbn);
+        const result = await compileSketch(body.sketch, fqbn, libraries, files);
         sendJson(res, 200, result);
       } catch (e) {
-        sendJson(res, 500, { error: (e as Error).message, output: (e as Error).message });
+        const error = e as Error;
+        const status = error instanceof RequestBodyError ? error.statusCode : 500;
+        sendJson(res, status, { error: error.message, output: error.message });
       }
     })();
   };

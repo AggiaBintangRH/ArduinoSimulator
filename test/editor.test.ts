@@ -297,3 +297,58 @@ describe('DiagramEditor replace', () => {
     expect(editor.value.parts).toHaveLength(2);
   });
 });
+
+describe('setWireRoute', () => {
+  function editorWithWire() {
+    const changes: number[] = [];
+    const errors: string[] = [];
+    const editor = new DiagramEditor(
+      {
+        version: 1,
+        parts: [
+          { id: 'uno', type: 'wokwi-arduino-uno', left: 0, top: 0 },
+          { id: 'led1', type: 'wokwi-led', left: 200, top: 100 },
+        ],
+        connections: [['uno:13', 'led1:A', 'green', []]],
+      },
+      { onChange: () => changes.push(1), onError: (m) => errors.push(m) },
+    );
+    return { editor, changes, errors };
+  }
+
+  it('stores the route on the wire', () => {
+    const { editor } = editorWithWire();
+    editor.setWireRoute(0, ['v19.2', 'h-9.6']);
+    expect(editor.value.connections[0][3]).toEqual(['v19.2', 'h-9.6']);
+  });
+
+  it('records exactly one undo step per call', () => {
+    // The drag reports once, on release; a route change is one edit, so one
+    // undo must put the wire back the way it was.
+    const { editor } = editorWithWire();
+    editor.setWireRoute(0, ['v19.2']);
+    editor.undo();
+    expect(editor.value.connections[0][3]).toEqual([]);
+  });
+
+  it('rejects a route the router cannot parse, and says why', () => {
+    const { editor, errors } = editorWithWire();
+    editor.setWireRoute(0, ['sideways']);
+    expect(editor.value.connections[0][3]).toEqual([]);
+    expect(errors.length).toBe(1);
+  });
+
+  it('copies the route rather than aliasing the caller array', () => {
+    const { editor } = editorWithWire();
+    const route = ['v19.2'];
+    editor.setWireRoute(0, route);
+    route.push('h19.2');
+    expect(editor.value.connections[0][3]).toEqual(['v19.2']);
+  });
+
+  it('ignores an index that is not a wire', () => {
+    const { editor, changes } = editorWithWire();
+    editor.setWireRoute(5, ['v10']);
+    expect(changes).toEqual([]);
+  });
+});

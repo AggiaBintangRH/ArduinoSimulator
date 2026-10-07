@@ -14,14 +14,22 @@ Then open http://localhost:5173.
 
 ## What works
 
-- **ATmega328P** (Arduino Uno / Nano) — GPIO, PWM, timers, USART, ADC, I2C and
-  SPI peripherals, at a configurable clock.
+- **Dashboard** — the app opens on a board picker; choosing one starts a blink
+  project for that board. The `Boards` button in the toolbar goes back.
+- **Boards** — Arduino Uno (ATmega328P) and Arduino Mega 2560 (ATmega2560),
+  both running real compiled firmware: GPIO, PWM, timers, USART, ADC, I2C and
+  SPI peripherals, at a configurable clock. The Mega adds ports A-L, timers 3-5,
+  16 analog inputs and `Serial1`-`Serial3`. Compiling picks the right board
+  automatically from the diagram. Nano, Leonardo and ESP32 are planned — see
+  [TODO.md](TODO.md) phase 10. The Mega's board artwork and pin names are
+  adapted from Wokwi Elements (MIT) — see [THIRD-PARTY.md](THIRD-PARTY.md).
+  Its reset button works: hold it to stop the chip, let go to restart the sketch.
 - **Wokwi-compatible `diagram.json`** — same part types, pin names, attributes,
   connection arrays and `v`/`h`/`*` wire-routing language, so diagrams copy
   across.
 - **Parts** — LED, RGB LED, bar graph, resistor, pushbutton, slide switch, DIP
-  switch, potentiometer, NTC thermistor, photoresistor, buzzer, 7-segment,
-  HD44780 LCD (parallel and I2C), and WS2812 strip/ring/matrix.
+  switch, potentiometer, NTC thermistor, photoresistor, DHT22, HC-SR04, servo,
+  buzzer, 7-segment, HD44780 LCD (parallel and I2C), and WS2812 strip/ring/matrix.
 - **Editor** — add, move, rotate, duplicate and delete parts; draw wires by
   clicking pins; edit attributes in the inspector; undo/redo; two-way sync with
   the `diagram.json` text view.
@@ -45,11 +53,62 @@ winget install ArduinoSA.CLI
 arduino-cli core install arduino:avr
 ```
 
-Restart `npm run dev` and the **Compile** button will build the sketch.
+Restart `npm run dev` and **Start** will build the sketch and run it. There is
+no separate compile step; successful builds are cached, so starting again
+without editing anything does not rebuild.
 
 Without a toolchain the simulator still runs — use **Load .hex** to open a
 prebuilt firmware file (`fixtures/blink.hex` is included). The build log says
 which mode you are in.
+
+## Sketch files
+
+A sketch is a directory, not a single file. The `+` on the tab strip adds one:
+type a name (`pitches` becomes `pitches.h`) or upload one from disk. Headers
+sit beside `sketch.ino`, so `#include "pitches.h"` resolves the way it does in
+the Arduino IDE. `.h`, `.hpp`, `.c`, `.cc`, `.cpp`, `.ino` and `.S` are
+compiled; anything else is refused with the reason.
+
+Files are saved with the project and travel with an export.
+
+## Libraries
+
+**Libraries** in the toolbar searches the Arduino library index, installs by
+name, or takes a `.zip` — the same archive the Arduino IDE's *Add .ZIP Library*
+accepts; you can also drop one on the dialog. Everything goes to the local
+`arduino-cli`'s own library directory, so a library installed here is one the
+Arduino IDE has too.
+
+A project records the libraries its sketch needs by name, and that list travels
+with the exported project; the toolchain is what actually has them installed.
+Opening a project that needs a library this machine lacks marks it in the
+dialog, and building says which library is missing instead of failing on an
+`#include`.
+
+Uploading a `.zip` runs `arduino-cli lib install --zip-path`, which installs
+code you supplied without checking it against the index — the same trust
+decision as adding a zip library in the Arduino IDE.
+
+## Sound
+
+A buzzer plays. The part measures the square wave on its pins and the app turns
+that into a tone, so `tone()` and a bit-banged pin both sound. The speaker
+button in the toolbar mutes it, and that choice is remembered.
+
+Sound starts on **Start**, because browsers will not play audio until the
+person has interacted with the page.
+
+The tone is shaped the way a piezo buzzer shapes it — a small resonator with
+little output down low — so it sounds thin and reedy rather than like a
+synthesiser playing a square wave.
+
+## Pressing things
+
+While a simulation is running, parts with something to operate can be operated:
+press and hold a pushbutton (it conducts while held, like the real part), click
+a slide switch to flip it, adjust the potentiometer, sensor readings, or servo
+angle in the inspector, and press the Mega's reset button. Nothing responds
+before **Start** — there is no sketch running to notice.
 
 ## Keyboard
 
@@ -58,14 +117,19 @@ which mode you are in.
 | `Ctrl`/`⌘` + `Enter` | Start / stop the simulation |
 | `Ctrl`/`⌘` + `S` | Save the project |
 | `Ctrl`/`⌘` + `Z` | Undo (`Shift` to redo) |
-| `A` | Add a part |
 | `R` | Rotate the selected part |
 | `D` | Duplicate the selected part |
 | `Delete` | Remove the selected part |
 | `Esc` | Cancel the wire being drawn |
 
-Scroll to zoom, drag the background to pan. Parts snap to the 2.54 mm (0.1 in)
-grid.
+Parts are added with the **Add part** button on the canvas, which drops them
+where you are looking.
+
+Scroll to zoom, middle-drag the background to pan, and left-drag empty canvas
+to select a group of parts. Shift-click or Shift-drag adds parts to the
+selection. Drag a selected part to move the group, or use `R`/`Delete` to
+rotate/remove the group together. Drag a wire to reshape it; moves snap to the
+2.54 mm (0.1 in) grid, and `Shift` halves the step.
 
 ## Layout
 
@@ -77,10 +141,10 @@ src/
   parts/     part implementations
   render/    SVG artwork and canvas
   editor/    diagram mutation, undo/redo
-  build/     compiler client
+  build/     compiler, library and sketch-file clients
   ui/        styles
 docs/wokwi/  digest of the Wokwi documentation this was built against
-test/        321 tests
+test/        644 tests
 ```
 
 ## Design notes
@@ -110,10 +174,18 @@ silicon emits a one-tick spike. This is unreachable from normal Arduino code —
 with PWM enabled — and is pinned by a test so an avr8js upgrade that fixes it
 shows up rather than passing silently.
 
+avr8js also restarts a timer's prescaler phase on every write to `TCCRnB`,
+where hardware ignores a write that changes nothing. `tone()` rewrites that
+register on every call, so a sketch calling it from `loop()` — the usual shape
+of a button-driven instrument — made the timer crawl and every note play flat.
+Redundant writes to that register are dropped before avr8js sees them, which is
+what the hardware does with them; a real configuration change is passed
+through. Three tests cover it.
+
 ## Testing
 
 ```bash
-npm test         # 321 tests
+npm test         # 644 tests
 npm run typecheck
 npm run build
 ```

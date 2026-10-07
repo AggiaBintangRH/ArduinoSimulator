@@ -118,19 +118,63 @@ registerPart({
 });
 
 /**
+ * The note in a window of measured periods.
+ *
+ * The median, not the mean. A window that straddles a note change holds
+ * periods from both notes, and their mean is a pitch that was never played:
+ * 440 changing to 880 reported ~859 for one window, which is heard as a wrong
+ * note in front of the right one. The median of a mostly-new window is the
+ * new note.
+ */
+export function dominantFrequency(periodsNanos: readonly number[]): number {
+  // Too few edges to call it a pitch at all.
+  if (periodsNanos.length < 3) return 0;
+  const sorted = [...periodsNanos].sort((a, b) => a - b);
+  const median = sorted[sorted.length >> 1];
+  if (median <= 0) return 0;
+
+  /*
+   * A tone is periodic; a switch bouncing is not.
+   *
+   * Contact bounce makes a sketch call `tone()` and `noTone()` a dozen times
+   * in a millisecond, and the burst of ragged edges that leaves has a median
+   * like any other set of numbers. Reported as a pitch, it became a chirp in
+   * front of every note - a 20ms tone somewhere around 1kHz, which no buzzer
+   * would ever produce from a 1ms scuffle. So the window has to look periodic
+   * before it is called a note: most of it close to the median.
+   *
+   * Kept loose enough that a window straddling a note change still reports
+   * the new note, because most of that window really is the new note.
+   */
+  const close = sorted.filter((p) => Math.abs(p - median) <= median * 0.2).length;
+  if (close < periodsNanos.length * 0.6) return 0;
+  return Math.round(1e9 / median);
+}
+
+/**
  * wokwi-buzzer.
  *
  * Measures the frequency of the square wave across its pins and reports it.
- * The renderer owns WebAudio; the part stays headless so it is testable.
+ * The sound itself is made in `ui/audio.ts`, from these reports; the part
+ * stays headless so it can be tested without a browser.
  */
 class BuzzerPart implements Part {
   private ctx!: PartContext;
   private lastEdge: bigint | null = null;
   private periods: number[] = [];
   private currentFreq = 0;
+  /*
+   * Held rather than read back out of `ctx` at each report: the attributes a
+   * part is built with are the ones it keeps, so re-reading them after an edit
+   * returns the old value. `attrChanged` is handed the new one.
+   */
+  private volume = 1;
+  private mode = 'smooth';
 
   init(ctx: PartContext): void {
     this.ctx = ctx;
+    this.volume = ctx.attrNumber('volume', 1);
+    this.mode = ctx.attr('mode', 'smooth');
     ctx.pinInit('1', PinMode.Input);
     ctx.pinInit('2', PinMode.Input);
 
@@ -138,7 +182,12 @@ class BuzzerPart implements Part {
     ctx.pinWatch('2', Edge.Rising, () => this.onRisingEdge());
 
     const timer = ctx.timerInit(() => this.report());
-    ctx.timerStart(timer, 50_000, true); // 20Hz reporting
+    /*
+     * 50Hz. At the 20Hz this used to run, a note in a fast melody could be
+     * over before it was ever reported, and every note started up to 50ms
+     * late - enough to hear a tune limp.
+     */
+    ctx.timerStart(timer, 20_000, true);
   }
 
   private onRisingEdge(): void {
@@ -153,8 +202,7 @@ class BuzzerPart implements Part {
   private report(): void {
     let freq = 0;
     if (this.periods.length > 0) {
-      const mean = this.periods.reduce((a, b) => a + b, 0) / this.periods.length;
-      freq = Math.round(1e9 / mean);
+      freq = dominantFrequency(this.periods);
       this.periods.length = 0;
     } else {
       // No edges in the window: the tone has stopped.
@@ -162,11 +210,30 @@ class BuzzerPart implements Part {
     }
     if (freq === this.currentFreq) return;
     this.currentFreq = freq;
+    this.emitState();
+  }
+
+  private emitState(): void {
     this.ctx.emit({
-      frequency: freq,
-      playing: freq > 0,
-      volume: this.ctx.attrNumber('volume', 1),
+      frequency: this.currentFreq,
+      playing: this.currentFreq > 0,
+      volume: this.volume,
+      // Wokwi's two modes: "smooth" shapes the note edges, "accurate" switches
+      // instantly and clicks, which is what a driven piezo really does.
+      mode: this.mode,
     });
+  }
+
+  /*
+   * Volume and mode are read at the moment a tone is reported, and a held note
+   * reports nothing further - so without this, turning the volume down did
+   * nothing until the sketch happened to change the pitch.
+   */
+  attrChanged(name: string, value: string): void {
+    if (name === 'volume') this.volume = parseFloat(value) || 0;
+    else if (name === 'mode') this.mode = value || 'smooth';
+    else return;
+    this.emitState();
   }
 }
 

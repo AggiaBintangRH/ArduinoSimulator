@@ -7,20 +7,14 @@ import { registerPart } from '../sim/registry.js';
 import { Edge, HIGH, PinMode, type DigitalValue } from '../sim/net.js';
 import type { Part, PartContext } from '../sim/part.js';
 
-/** Default emitted-light color for each body color. */
-const LIGHT_COLORS: Record<string, string> = {
-  red: '#ff2d2d',
-  green: '#2dff2d',
-  blue: '#4d9dff',
-  yellow: '#ffee2d',
-  orange: '#ffa32d',
-  white: '#ffffff',
-  purple: '#c34dff',
-};
-
-export function lightColorFor(color: string): string {
-  return LIGHT_COLORS[color.toLowerCase()] ?? color;
-}
+/**
+ * What light a body colour emits.
+ *
+ * The rule lives in `util/color` because the renderer needs it too - and for a
+ * long time only the renderer decided, by reading the body colour straight
+ * out of the attributes, so this map was never consulted at all.
+ */
+export { ledLightColor as lightColorFor, LED_COLORS } from '../util/color.js';
 
 /**
  * Brightness tracker.

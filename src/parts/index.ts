@@ -7,8 +7,11 @@
 import './led.js';
 import './input.js';
 import './analog.js';
+import './sensors.js';
 import './display.js';
+import './motors.js';
 import './lcd1602.js';
 import './neopixel.js';
+import './wire-junction.js';
 
 export { registeredTypes, getPartDefinition, pinLookup } from '../sim/registry.js';

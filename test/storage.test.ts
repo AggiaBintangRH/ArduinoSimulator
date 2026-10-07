@@ -10,6 +10,7 @@ import {
   type Project,
 } from '../src/storage.js';
 import { EXAMPLES, getExample } from '../src/examples.js';
+import { BOARD_TYPES } from '../src/mcu/boards.js';
 import { Simulation } from '../src/sim/simulation.js';
 import { parseDiagram } from '../src/diagram/parse.js';
 import { pinLookup } from '../src/sim/registry.js';
@@ -23,6 +24,7 @@ const PROJECT: Project = {
     connections: [],
   },
   libraries: ['Servo', 'FastLED@3.5.0'],
+  files: [{ name: 'pitches.h', content: '#define NOTE_C4 262' }],
 };
 
 describe('project serialization', () => {
@@ -139,9 +141,7 @@ describe('bundled examples', () => {
       });
 
       it('contains exactly one microcontroller', () => {
-        const boards = example.diagram.parts.filter((p) =>
-          ['wokwi-arduino-uno', 'wokwi-arduino-nano'].includes(p.type),
-        );
+        const boards = example.diagram.parts.filter((p) => BOARD_TYPES.has(p.type));
         expect(boards).toHaveLength(1);
       });
 
@@ -151,6 +151,7 @@ describe('bundled examples', () => {
           sketch: example.sketch,
           diagram: example.diagram,
           libraries: [],
+          files: [],
         };
         const back = deserializeProject(serializeProject(project));
         expect(back.diagram.connections).toEqual(example.diagram.connections);

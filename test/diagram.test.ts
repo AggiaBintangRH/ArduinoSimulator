@@ -6,7 +6,17 @@ import {
   assertNoErrors,
   DiagramParseError,
 } from '../src/diagram/parse.js';
-import { parseRoute, routeWire, dedupe, RouteParseError } from '../src/diagram/router.js';
+import {
+  parseRoute,
+  routeWire,
+  dedupe,
+  offsetSegment,
+  routeFromPoints,
+  nearestSegment,
+  perpendicular,
+  roundedPath,
+  RouteParseError,
+} from '../src/diagram/router.js';
 
 const BLINK = {
   version: 1,
@@ -300,5 +310,185 @@ describe('dedupe', () => {
       { x: 0, y: 0 },
       { x: 0, y: 10 },
     ]);
+  });
+});
+
+describe('offsetSegment', () => {
+  // A plain elbow: right along the top, then down to the target.
+  const source = { x: 0, y: 0 };
+  const target = { x: 100, y: 60 };
+  const elbow = routeWire(source, target, []);
+
+  it('leaves the polyline alone for a segment index out of range', () => {
+    expect(offsetSegment(elbow, -1, 20)).toEqual(elbow);
+    expect(offsetSegment(elbow, elbow.length - 1, 20)).toEqual(elbow);
+  });
+
+  it('keeps both ends on their pins when the first segment is dragged', () => {
+    const moved = offsetSegment(elbow, 0, 24);
+    expect(moved[0]).toEqual(source);
+    expect(moved[moved.length - 1]).toEqual(target);
+  });
+
+  it('keeps both ends on their pins when the last segment is dragged', () => {
+    const last = elbow.length - 2;
+    const moved = offsetSegment(elbow, last, -24);
+    expect(moved[0]).toEqual(source);
+    expect(moved[moved.length - 1]).toEqual(target);
+  });
+
+  it('keeps both ends on their pins for a straight two-point wire', () => {
+    const straight = [source, { x: 0, y: 80 }];
+    const moved = offsetSegment(straight, 0, 20);
+    expect(moved[0]).toEqual(straight[0]);
+    expect(moved[moved.length - 1]).toEqual(straight[1]);
+  });
+
+  it('actually moves the segment it was given', () => {
+    const straight = [source, { x: 0, y: 80 }];
+    const moved = offsetSegment(straight, 0, 20);
+    // The vertical run now sits 20px to one side, joined by two new elbows.
+    const xs = new Set(moved.map((p) => p.x));
+    expect(xs.has(0)).toBe(true);
+    expect(xs.has(20) || xs.has(-20)).toBe(true);
+  });
+
+  it('stays orthogonal', () => {
+    for (const seg of [0, 1]) {
+      const moved = offsetSegment(elbow, seg, 19.2);
+      for (let i = 0; i < moved.length - 1; i++) {
+        const dx = moved[i + 1].x - moved[i].x;
+        const dy = moved[i + 1].y - moved[i].y;
+        expect(dx === 0 || dy === 0).toBe(true);
+      }
+    }
+  });
+
+  it('is a no-op for a zero offset', () => {
+    expect(offsetSegment(elbow, 0, 0)).toEqual(elbow);
+  });
+});
+
+describe('routeFromPoints', () => {
+  it('round-trips a routed wire through routeWire', () => {
+    const source = { x: 0, y: 0 };
+    const target = { x: 100, y: 60 };
+    const points = offsetSegment(routeWire(source, target, []), 0, 24);
+    const route = routeFromPoints(points);
+    expect(routeWire(source, target, route)).toEqual(points);
+  });
+
+  it('survives being stored and parsed as diagram JSON', () => {
+    const source = { x: 0, y: 0 };
+    const target = { x: 100, y: 60 };
+    const points = offsetSegment(routeWire(source, target, []), 1, -19.2);
+    const route = routeFromPoints(points);
+    const reloaded = JSON.parse(JSON.stringify(route)) as string[];
+    expect(() => parseRoute(reloaded)).not.toThrow();
+    expect(routeWire(source, target, reloaded)).toEqual(points);
+  });
+
+  it('emits no step for a zero-length move', () => {
+    expect(routeFromPoints([{ x: 0, y: 0 }, { x: 0, y: 0 }])).toEqual([]);
+  });
+
+  it('keeps numbers free of floating-point noise', () => {
+    const points = [{ x: 0, y: 0 }, { x: 0.1 + 0.2, y: 0 }];
+    expect(routeFromPoints(points)).toEqual(['h0.3']);
+  });
+});
+
+describe('nearestSegment', () => {
+  const points = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 100, y: 100 },
+  ];
+
+  it('picks the horizontal run for a point above it', () => {
+    expect(nearestSegment(points, { x: 50, y: 4 })).toBe(0);
+  });
+
+  it('picks the vertical run for a point beside it', () => {
+    expect(nearestSegment(points, { x: 96, y: 70 })).toBe(1);
+  });
+
+  it('reports -1 when there is no segment at all', () => {
+    expect(nearestSegment([{ x: 0, y: 0 }], { x: 0, y: 0 })).toBe(-1);
+  });
+});
+
+describe('perpendicular', () => {
+  it('is horizontal for a vertical segment, and vice versa', () => {
+    expect(perpendicular({ x: 0, y: 0 }, { x: 0, y: 10 })).toEqual({ x: -1, y: 0 });
+    expect(perpendicular({ x: 0, y: 0 }, { x: 10, y: 0 })).toEqual({ x: 0, y: 1 });
+  });
+});
+
+describe('dedupe tolerance', () => {
+  it('closes a run that lands a rounding error away from the pin', () => {
+    // Route steps are rounded to a tenth of a pixel, so a long chain can end
+    // a hair off the target. That used to leave a zero-length segment, which
+    // then grew a drag handle of its own.
+    const source = { x: 184, y: 9 };
+    const target = { x: 386, y: 58 };
+    const points = routeWire(source, target, [
+      'h19.2',
+      'v-115.2',
+      'h125.2',
+      'v164.2',
+      'h57.6',
+    ]);
+    expect(points[points.length - 1]).toEqual(target);
+    for (let i = 0; i < points.length - 1; i++) {
+      const length = Math.hypot(
+        points[i + 1].x - points[i].x,
+        points[i + 1].y - points[i].y,
+      );
+      expect(length).toBeGreaterThan(0.001);
+    }
+  });
+});
+
+describe('roundedPath', () => {
+  const elbow = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 100, y: 100 },
+  ];
+
+  it('starts at the first point and ends at the last', () => {
+    const d = roundedPath(elbow, 8);
+    expect(d.startsWith('M0 0')).toBe(true);
+    expect(d.endsWith('L100 100')).toBe(true);
+  });
+
+  it('curves through the corner instead of turning square', () => {
+    const d = roundedPath(elbow, 8);
+    expect(d).toContain('Q100 0');
+    // The straight run stops short of the corner by the radius.
+    expect(d).toContain('L92 0');
+  });
+
+  it('never rounds more than half a segment', () => {
+    // A 10px run with a 40px radius would otherwise overshoot the corner and
+    // double back on itself.
+    const tight = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+    ];
+    const d = roundedPath(tight, 40);
+    expect(d).toContain('L5 0');
+    expect(d).toContain('Q10 0 10 5');
+  });
+
+  it('leaves a straight two-point wire alone', () => {
+    expect(roundedPath([{ x: 0, y: 0 }, { x: 50, y: 0 }], 8)).toBe('M0 0 L50 0');
+  });
+
+  it('handles degenerate input without throwing', () => {
+    expect(roundedPath([], 8)).toBe('');
+    expect(roundedPath([{ x: 3, y: 4 }], 8)).toBe('M3 4');
   });
 });

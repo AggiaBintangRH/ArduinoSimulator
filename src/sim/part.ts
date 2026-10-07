@@ -73,6 +73,8 @@ export interface PartDefinition {
   pins: readonly string[];
   /** Default attribute values. */
   defaults?: Readonly<Record<string, string>>;
+  /** Internal simulator part hidden from the add-part picker. */
+  internal?: boolean;
   create(): Part;
 }
 

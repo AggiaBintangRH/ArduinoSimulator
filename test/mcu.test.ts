@@ -511,3 +511,77 @@ describe('ATmega328P firmware loading', () => {
     expect(ctx.board.cycles).toBe(0);
   });
 });
+
+describe('ATmega328P timer prescaler', () => {
+  /*
+   * Timer2 in CTC mode toggling OC2A (PB3, pin D11) - the hardware equivalent
+   * of what `tone()` does from its interrupt. OCR2A is 20 and the prescaler is
+   * /128, so the pin must flip every (20 + 1) * 128 = 2688 cycles.
+   */
+  const OCR = 20;
+  const PRESCALER = 128;
+  const HALF_PERIOD = (OCR + 1) * PRESCALER;
+
+  const SETUP = `
+    ldi r16, 0x08
+    out 0x04, r16      ; DDRB: PB3 (OC2A) as an output
+    ldi r16, 0x42
+    sts 0xB0, r16      ; TCCR2A: CTC, toggle OC2A on compare match
+    ldi r16, ${OCR}
+    sts 0xB3, r16      ; OCR2A
+    ldi r17, 0x05
+    sts 0xB1, r17      ; TCCR2B: clock/128
+  `;
+
+  it('toggles at the rate the prescaler and OCR set', () => {
+    const ctx = makeBoard(`${SETUP}
+    loop:
+      rjmp loop
+    `);
+    const probe = new Probe(ctx, '11');
+    ctx.board.advanceMillis(20);
+    expect(probe.intervals().length).toBeGreaterThan(3);
+    for (const interval of probe.intervals()) {
+      expect(interval).toBe(HALF_PERIOD);
+    }
+  });
+
+  it('keeps counting while the sketch rewrites the control register', () => {
+    /*
+     * `tone()` writes TCCR2B on every call, and calling it from `loop()` - as
+     * the Arduino piano example does - rewrites it thousands of times a
+     * second. avr8js restarts the prescaler phase on every write to that
+     * register, throwing away the progress made towards the next tick, so the
+     * timer crawled: a held C4 played at 257Hz instead of 262.6Hz, and in a
+     * tight loop the same call produced 78Hz. Hardware ignores a write that
+     * changes nothing.
+     */
+    const ctx = makeBoard(`${SETUP}
+    loop:
+      sts 0xB1, r17    ; the same value, over and over, as tone() does
+      rjmp loop
+    `);
+    const probe = new Probe(ctx, '11');
+    ctx.board.advanceMillis(20);
+    expect(probe.intervals().length).toBeGreaterThan(3);
+    for (const interval of probe.intervals()) {
+      expect(interval).toBe(HALF_PERIOD);
+    }
+  });
+
+  it('still acts on a write that really changes the prescaler', () => {
+    // The fix drops redundant writes, not real ones: switching to /1024 has to
+    // slow the timer down by the ratio of the two dividers.
+    const ctx = makeBoard(`${SETUP}
+      ldi r18, 0x07
+      sts 0xB1, r18    ; TCCR2B: clock/1024
+    loop:
+      rjmp loop
+    `);
+    const probe = new Probe(ctx, '11');
+    ctx.board.advanceMillis(50);
+    const intervals = probe.intervals();
+    expect(intervals.length).toBeGreaterThan(2);
+    expect(intervals.at(-1)).toBe((OCR + 1) * 1024);
+  });
+});

@@ -8,6 +8,7 @@ import { applyGamma, BrightnessMeter } from '../src/parts/led.js';
 import { ntcVoltage, positionToVolts, ldrResistance } from '../src/parts/analog.js';
 import { Hd44780, Pcf8574Backpack } from '../src/parts/lcd1602.js';
 import { Ws2812Decoder, bitsToRgb, T0H, T1H, RESET_NANOS } from '../src/parts/neopixel.js';
+import { dominantFrequency } from '../src/parts/display.js';
 
 function diagram(parts: Diagram['parts'], connections: Diagram['connections']): Diagram {
   return { version: 1, parts, connections };
@@ -630,5 +631,50 @@ describe('Serial end to end', () => {
     );
     sim.runSimMillis(20);
     expect(String.fromCharCode(...out)).toBe('Hi');
+  });
+});
+
+describe('buzzer pitch measurement', () => {
+  const periodsFor = (hz: number, count: number) =>
+    Array.from({ length: count }, () => 1e9 / hz);
+
+  it('reads a steady tone', () => {
+    expect(dominantFrequency(periodsFor(440, 20))).toBe(440);
+  });
+
+  it('reports the new note, not a blend of the two', () => {
+    /*
+     * The reporting window does not line up with the sketch's notes, so one
+     * window in every change holds periods from both. Averaging them gave a
+     * pitch that was never played - 440 into 880 reported ~859 - and that
+     * wrong note was audible in front of the right one.
+     */
+    const straddling = [...periodsFor(440, 3), ...periodsFor(880, 17)];
+    expect(dominantFrequency(straddling)).toBe(880);
+  });
+
+  it('has nothing to report from an empty window', () => {
+    expect(dominantFrequency([])).toBe(0);
+  });
+
+  it('refuses to call a bouncing contact a note', () => {
+    /*
+     * A button bouncing makes the sketch start and stop the tone a dozen times
+     * in a millisecond, and those ragged edges have a median like any other
+     * numbers. Reported as a pitch it became a chirp in front of every note.
+     */
+    const chatter = [40_000, 900_000, 120_000, 60_000, 1_500_000, 80_000, 300_000];
+    expect(dominantFrequency(chatter)).toBe(0);
+  });
+
+  it('needs more than a couple of edges before calling it a pitch', () => {
+    expect(dominantFrequency(periodsFor(440, 2))).toBe(0);
+  });
+
+  it('still hears a real tone with a little jitter on it', () => {
+    // Edges land on whole CPU cycles, so periods wobble by a fraction of a
+    // percent. That is a tone, not noise.
+    const jittery = periodsFor(440, 12).map((p, i) => p * (1 + (i % 3) * 0.002));
+    expect(dominantFrequency(jittery)).toBeGreaterThan(430);
   });
 });

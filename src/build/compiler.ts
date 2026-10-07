@@ -8,6 +8,8 @@
  * still runs: firmware can be loaded from a prebuilt .hex.
  */
 
+import type { SketchFile } from './sketch-files.js';
+
 export interface CompileDiagnostic {
   file?: string;
   line?: number;
@@ -63,9 +65,17 @@ export function hasErrors(diagnostics: readonly CompileDiagnostic[]): boolean {
   return diagnostics.some((d) => d.severity === 'error');
 }
 
+/** Everything a build depends on besides the main sketch text. */
+export interface CompileOptions {
+  fqbn?: string;
+  libraries?: string[];
+  /** Headers and other sources that go in the sketch directory. */
+  files?: SketchFile[];
+}
+
 export interface Compiler {
   status(): Promise<CompilerStatus>;
-  compile(sketch: string, options?: { fqbn?: string; libraries?: string[] }): Promise<CompileResult>;
+  compile(sketch: string, options?: CompileOptions): Promise<CompileResult>;
 }
 
 /** Talks to the dev-server compile endpoint. */
@@ -93,10 +103,7 @@ export class HttpCompiler implements Compiler {
     }
   }
 
-  async compile(
-    sketch: string,
-    options: { fqbn?: string; libraries?: string[] } = {},
-  ): Promise<CompileResult> {
+  async compile(sketch: string, options: CompileOptions = {}): Promise<CompileResult> {
     const started = Date.now();
     try {
       const res = await fetch(this.baseUrl, {
@@ -106,6 +113,7 @@ export class HttpCompiler implements Compiler {
           sketch,
           fqbn: options.fqbn ?? 'arduino:avr:uno',
           libraries: options.libraries ?? [],
+          files: options.files ?? [],
         }),
       });
       const body = (await res.json()) as Partial<CompileResult> & { error?: string };
@@ -170,11 +178,15 @@ export class CachingCompiler implements Compiler {
     return this.inner.status();
   }
 
-  async compile(
-    sketch: string,
-    options: { fqbn?: string; libraries?: string[] } = {},
-  ): Promise<CompileResult> {
-    const key = JSON.stringify([sketch, options.fqbn ?? '', options.libraries ?? []]);
+  async compile(sketch: string, options: CompileOptions = {}): Promise<CompileResult> {
+    // The extra files are part of the key: editing a header and pressing Start
+    // again must rebuild, or the sketch would go on running the old firmware.
+    const key = JSON.stringify([
+      sketch,
+      options.fqbn ?? '',
+      options.libraries ?? [],
+      options.files ?? [],
+    ]);
     const hit = this.cache.get(key);
     if (hit) return hit;
     const result = await this.inner.compile(sketch, options);

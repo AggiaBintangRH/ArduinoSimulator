@@ -8,14 +8,14 @@
 
 import type { Diagram, DiagramPart } from '../diagram/types.js';
 import { parsePinRef } from '../diagram/parse.js';
-import { ATmega328P, UNO_PINS } from '../mcu/atmega328p.js';
+import { AvrBoard } from '../mcu/avr-board.js';
+import { BOARD_TYPES, getBoardDefinition, boardDefinitions } from '../mcu/boards.js';
 import { NetList, Pin } from './net.js';
 import { Scheduler } from './scheduler.js';
 import { PartRuntime, type Part, type PartEvent } from './part.js';
 import { getPartDefinition } from './registry.js';
 
-/** Diagram part types that are the microcontroller rather than a peripheral. */
-export const BOARD_TYPES = new Set(['wokwi-arduino-uno', 'wokwi-arduino-nano']);
+export { BOARD_TYPES } from '../mcu/boards.js';
 
 export interface SimulationProblem {
   severity: 'error' | 'warning';
@@ -38,7 +38,7 @@ export class Simulation {
   readonly problems: SimulationProblem[] = [];
   readonly parts = new Map<string, PartInstance>();
 
-  board: ATmega328P | null = null;
+  board: AvrBoard | null = null;
   boardId: string | null = null;
 
   /** Serial bytes emitted by the sketch. */
@@ -77,7 +77,9 @@ export class Simulation {
     if (boards.length === 0) {
       this.problems.push({
         severity: 'error',
-        message: 'diagram has no microcontroller (expected wokwi-arduino-uno or wokwi-arduino-nano)',
+        message: `diagram has no microcontroller (expected one of ${boardDefinitions()
+          .map((b) => b.type)
+          .join(', ')})`,
       });
     } else if (boards.length > 1) {
       this.problems.push({
@@ -104,12 +106,10 @@ export class Simulation {
   }
 
   private createBoard(part: DiagramPart): void {
+    const definition = getBoardDefinition(part.type)!;
     const frequency = part.attrs?.frequency;
-    const frequencyHz = frequency ? parseFrequency(frequency) : 16_000_000;
-    this.board = new ATmega328P(this.netlist, this.scheduler, {
-      frequencyHz,
-      pinNames: UNO_PINS,
-    });
+    const frequencyHz = frequency ? parseFrequency(frequency) : definition.defaultFrequencyHz;
+    this.board = new AvrBoard(definition, this.netlist, this.scheduler, { frequencyHz });
     this.boardId = part.id;
     this.board.onSerialByte = (b) => this.onSerialByte?.(b);
 
@@ -206,6 +206,16 @@ export class Simulation {
     }
   }
 
+  /** The board part's `diagram.json` type, once one has been built. */
+  get boardType(): string | null {
+    return this.board?.definition.type ?? null;
+  }
+
+  /** Board name for `arduino-cli`, so a compile targets the right chip. */
+  get fqbn(): string | null {
+    return this.board?.definition.fqbn ?? null;
+  }
+
   get hasErrors(): boolean {
     return this.problems.some((p) => p.severity === 'error');
   }
@@ -222,9 +232,28 @@ export class Simulation {
 
   /** Send a control input to a part (button press, slider move, ...). */
   setControl(partId: string, control: string, value: number | string | boolean): void {
+    if (partId === this.boardId) {
+      this.setBoardControl(control, value);
+      return;
+    }
     const instance = this.parts.get(partId);
     if (!instance) throw new Error(`no part with id ${JSON.stringify(partId)}`);
     instance.part.control?.(control, value);
+    this.safeSettle();
+  }
+
+  /**
+   * Controls on the board itself rather than on a peripheral.
+   *
+   * `reset` is momentary: pressing holds the chip in reset, releasing starts
+   * the firmware again from the top.
+   */
+  private setBoardControl(control: string, value: number | string | boolean): void {
+    if (!this.board) throw new Error('simulation has no microcontroller');
+    if (control !== 'reset') {
+      throw new Error(`board has no control ${JSON.stringify(control)}`);
+    }
+    this.board.setResetHeld(Boolean(value));
     this.safeSettle();
   }
 

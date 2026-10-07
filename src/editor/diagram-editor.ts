@@ -9,6 +9,13 @@
 import type { Diagram, DiagramConnection, DiagramPart } from '../diagram/types.js';
 import { parsePinRef } from '../diagram/parse.js';
 import { pinLookup } from '../sim/registry.js';
+import { parseRoute } from '../diagram/router.js';
+import {
+  WIRE_JUNCTION_CENTER,
+  WIRE_JUNCTION_PIN,
+  WIRE_JUNCTION_TYPE,
+} from '../parts/wire-junction.js';
+import type { Point } from '../diagram/router.js';
 
 /** Wokwi assigns wire colours by pin function: black ground, red 5V, green other. */
 export function defaultWireColor(refA: string, refB: string): string {
@@ -139,12 +146,36 @@ export class DiagramEditor {
     this.changed();
   }
 
+  /** Move a selected group in one undoable editor operation. */
+  moveParts(moves: readonly { id: string; left: number; top: number }[]): void {
+    const valid = moves.filter((move) => this.findPart(move.id));
+    if (valid.length === 0) return;
+    this.pushUndo();
+    for (const move of valid) {
+      const part = this.findPart(move.id)!;
+      part.left = move.left;
+      part.top = move.top;
+    }
+    this.changed();
+  }
+
   /** Rotate by 90 degrees, matching the "R" shortcut. */
   rotatePart(id: string, degrees = 90): void {
     const part = this.findPart(id);
     if (!part) return;
     this.pushUndo();
     part.rotate = (((part.rotate ?? 0) + degrees) % 360 + 360) % 360;
+    this.changed();
+  }
+
+  /** Rotate a selected group once around each component's own center. */
+  rotateParts(ids: readonly string[], degrees = 90): void {
+    const parts = ids.map((id) => this.findPart(id)).filter((part): part is DiagramPart => Boolean(part));
+    if (parts.length === 0) return;
+    this.pushUndo();
+    for (const part of parts) {
+      part.rotate = (((part.rotate ?? 0) + degrees) % 360 + 360) % 360;
+    }
     this.changed();
   }
 
@@ -156,7 +187,29 @@ export class DiagramEditor {
     this.diagram.connections = this.diagram.connections.filter(
       ([from, to]) => !refBelongsTo(from, id) && !refBelongsTo(to, id),
     );
+    this.removeOrphanWireJunctions();
     if (this.selectedId === id) this.select(null);
+    this.changed();
+  }
+
+  /** Remove a selected group and all attached connections in one undo step. */
+  deleteParts(ids: readonly string[]): void {
+    const targets = new Set(ids.filter((id) => this.findPart(id)));
+    if (targets.size === 0) return;
+    this.pushUndo();
+    this.diagram.parts = this.diagram.parts.filter((part) => !targets.has(part.id));
+    this.diagram.connections = this.diagram.connections.filter(
+      ([from, to]) =>
+        ![from, to].some((ref) => {
+          try {
+            return targets.has(parsePinRef(ref).partId);
+          } catch {
+            return false;
+          }
+        }),
+    );
+    this.removeOrphanWireJunctions();
+    if (this.selectedId && targets.has(this.selectedId)) this.select(null);
     this.changed();
   }
 
@@ -240,6 +293,53 @@ export class DiagramEditor {
     return true;
   }
 
+  /** Split an existing wire and connect a pending pin at its new junction. */
+  branchWireAt(
+    index: number,
+    source: { partId: string; pin: string },
+    at: Point,
+    splitRoutes: [string[], string[]],
+    branchRoute: string[],
+  ): boolean {
+    const wire = this.diagram.connections[index];
+    if (!wire) return false;
+    const sourceRef = `${source.partId}:${source.pin}`;
+    const sourcePart = this.findPart(source.partId);
+    const sourcePins = sourcePart ? pinLookup(sourcePart.type) : null;
+    if (!sourcePart || (sourcePins && !sourcePins.includes(source.pin))) {
+      this.events.onError?.(`cannot branch from missing pin "${sourceRef}"`);
+      return false;
+    }
+    try {
+      for (const route of [...splitRoutes, branchRoute]) parseRoute(route);
+    } catch (error) {
+      this.events.onError?.((error as Error).message);
+      return false;
+    }
+
+    const junctionId = makePartId(this.diagram, WIRE_JUNCTION_TYPE);
+    const junctionRef = `${junctionId}:${WIRE_JUNCTION_PIN}`;
+    const junctionPart: DiagramPart = {
+      id: junctionId,
+      type: WIRE_JUNCTION_TYPE,
+      left: at.x - WIRE_JUNCTION_CENTER,
+      top: at.y - WIRE_JUNCTION_CENTER,
+    };
+    const [from, to, color] = wire;
+    this.pushUndo();
+    this.pendingPin = null;
+    this.diagram.parts.push(junctionPart);
+    this.diagram.connections.splice(
+      index,
+      1,
+      [from, junctionRef, color, [...splitRoutes[0]]],
+      [junctionRef, to, color, [...splitRoutes[1]]],
+      [sourceRef, junctionRef, defaultWireColor(sourceRef, junctionRef), [...branchRoute]],
+    );
+    this.changed();
+    return true;
+  }
+
   hasConnection(from: string, to: string): boolean {
     return this.diagram.connections.some(
       ([a, b]) => (a === from && b === to) || (a === to && b === from),
@@ -254,6 +354,7 @@ export class DiagramEditor {
     if (filtered.length === before) return false;
     this.pushUndo();
     this.diagram.connections = filtered;
+    this.removeOrphanWireJunctions();
     this.changed();
     return true;
   }
@@ -262,8 +363,27 @@ export class DiagramEditor {
     if (index < 0 || index >= this.diagram.connections.length) return false;
     this.pushUndo();
     this.diagram.connections.splice(index, 1);
+    this.removeOrphanWireJunctions();
     this.changed();
     return true;
+  }
+
+  /** Remove internal branch markers after their final wire is deleted. */
+  private removeOrphanWireJunctions(): void {
+    const connectedPartIds = new Set<string>();
+    for (const [from, to] of this.diagram.connections) {
+      for (const ref of [from, to]) {
+        try {
+          connectedPartIds.add(parsePinRef(ref).partId);
+        } catch {
+          // Malformed references are handled by diagram validation; they must
+          // not keep an otherwise unused internal marker alive.
+        }
+      }
+    }
+    this.diagram.parts = this.diagram.parts.filter(
+      (part) => part.type !== WIRE_JUNCTION_TYPE || connectedPartIds.has(part.id),
+    );
   }
 
   setWireColor(index: number, color: string): void {
@@ -271,6 +391,28 @@ export class DiagramEditor {
     if (!wire) return;
     this.pushUndo();
     wire[2] = color;
+    this.changed();
+  }
+
+  /**
+   * Replace a wire's route instructions.
+   *
+   * The route is the only record of a wire's shape, so whoever reshapes it -
+   * today, the canvas drag - hands the finished instructions here rather than
+   * an offset this class would have to turn into geometry it cannot see.
+   * Call this once per gesture: it records an undo step.
+   */
+  setWireRoute(index: number, route: string[]): void {
+    const wire = this.diagram.connections[index];
+    if (!wire) return;
+    try {
+      parseRoute(route);
+    } catch (e) {
+      this.events.onError?.((e as Error).message);
+      return;
+    }
+    this.pushUndo();
+    wire[3] = [...route];
     this.changed();
   }
 }

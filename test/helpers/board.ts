@@ -7,7 +7,8 @@
  */
 
 import { assemble } from '../../node_modules/avr8js/dist/esm/utils/assembler.js';
-import { ATmega328P } from '../../src/mcu/atmega328p.js';
+import { AvrBoard } from '../../src/mcu/avr-board.js';
+import { ARDUINO_UNO, type BoardDefinition } from '../../src/mcu/boards.js';
 import { NetList, Pin, PinMode, Edge, type DigitalValue } from '../../src/sim/net.js';
 import { Scheduler } from '../../src/sim/scheduler.js';
 
@@ -20,15 +21,19 @@ export function asm(source: string): Uint8Array {
 }
 
 export interface TestBoard {
-  board: ATmega328P;
+  board: AvrBoard;
   netlist: NetList;
   scheduler: Scheduler;
 }
 
-export function makeBoard(source?: string, frequencyHz = 16_000_000): TestBoard {
+export function makeBoard(
+  source?: string,
+  frequencyHz = 16_000_000,
+  definition: BoardDefinition = ARDUINO_UNO,
+): TestBoard {
   const netlist = new NetList();
   const scheduler = new Scheduler();
-  const board = new ATmega328P(netlist, scheduler, { frequencyHz });
+  const board = new AvrBoard(definition, netlist, scheduler, { frequencyHz });
   if (source !== undefined) board.loadBinary(asm(source));
   return { board, netlist, scheduler };
 }

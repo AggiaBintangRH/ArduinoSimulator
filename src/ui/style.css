@@ -14,6 +14,7 @@
   --canvas-bg: #12181e;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
   --font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
 }
 
 @media (prefers-color-scheme: light) {
@@ -25,9 +26,10 @@
     --fg: #16202b;
     --fg-dim: #5d6b7a;
     --accent: #0b7fa8;
-    --accent-dim: #38bdf8;
+    --accent-dim: #086e95;
     --grid: #d8dfe7;
     --canvas-bg: #fbfcfd;
+    color-scheme: light;
   }
 }
 
@@ -48,7 +50,27 @@ body {
 
 body {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  /* toolbar, panes, the serial splitter, the serial pane */
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  line-height: 1.45;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+.file-button:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+input::placeholder {
+  color: var(--fg-dim);
+  opacity: 0.8;
 }
 
 /* ---- toolbar ---- */
@@ -56,8 +78,8 @@ body {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 8px 12px;
+  gap: 10px 16px;
+  padding: 10px 16px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
@@ -68,6 +90,8 @@ body {
   align-items: center;
   gap: 8px;
   font-size: 15px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .brand .logo {
@@ -79,6 +103,17 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+
+.toolbar-group > button,
+.toolbar-group > .file-button {
+  white-space: nowrap;
+}
+
+#select-example {
+  max-width: 220px;
+  text-overflow: ellipsis;
 }
 
 .toolbar-group.right {
@@ -94,8 +129,9 @@ select {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 12px;
+  line-height: 1.4;
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 
 button:hover:not(:disabled),
@@ -116,7 +152,7 @@ button.primary {
 }
 
 button.primary:hover:not(:disabled) {
-  background: var(--accent);
+  background: color-mix(in srgb, var(--accent-dim) 85%, #fff);
 }
 
 .icon {
@@ -149,6 +185,10 @@ button.primary:hover:not(:disabled) {
   color: var(--fg-dim);
   min-width: 12ch;
   text-align: right;
+  max-width: 30ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status.running {
@@ -167,9 +207,36 @@ button.primary:hover:not(:disabled) {
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(280px, 38%) 1fr;
+  /*
+   * The editor's width and the serial monitor's height are dragged, so they
+   * live as custom properties rather than fixed values. Both may go to zero:
+   * a pane put away entirely leaves its splitter behind to bring it back.
+   */
+  grid-template-columns: var(--code-width, 38%) auto 1fr;
   min-height: 0;
   overflow: hidden;
+}
+
+.splitter {
+  background: var(--border);
+  transition: background 0.12s;
+  touch-action: none;
+}
+
+.splitter:hover,
+.splitter:focus-visible,
+.splitter.dragging {
+  background: var(--accent);
+}
+
+.splitter-x {
+  width: 6px;
+  cursor: col-resize;
+}
+
+.splitter-y {
+  height: 6px;
+  cursor: row-resize;
 }
 
 .pane {
@@ -180,15 +247,16 @@ button.primary:hover:not(:disabled) {
   background: var(--bg-panel);
 }
 
+/* The splitter beside it draws the divider; a border here would double it. */
 .pane-code {
-  border-right: 1px solid var(--border);
+  min-width: 0;
 }
 
 .pane-tabs {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 4px 6px;
+  padding: 5px 8px 0;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
 }
@@ -201,7 +269,7 @@ button.primary:hover:not(:disabled) {
   background: none;
   border: none;
   border-radius: 5px 5px 0 0;
-  padding: 6px 12px;
+  padding: 8px 12px;
   color: var(--fg-dim);
   font-size: 13px;
 }
@@ -225,7 +293,7 @@ button.primary:hover:not(:disabled) {
   border: none;
   outline: none;
   resize: none;
-  padding: 12px;
+  padding: 16px;
   background: var(--bg-panel);
   color: var(--fg);
   font-family: var(--font-mono);
@@ -256,6 +324,14 @@ button.primary:hover:not(:disabled) {
 
 .diagram-canvas {
   cursor: grab;
+  /*
+   * Nothing on the canvas is text to be read: the labels are silkscreen
+   * printed on the boards. Leaving them selectable meant a drag across a
+   * board highlighted its pin names and handed the pointer to the browser's
+   * own drag-the-selection behaviour instead of to the wire.
+   */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .diagram-canvas:active {
@@ -263,30 +339,214 @@ button.primary:hover:not(:disabled) {
 }
 
 .part {
-  cursor: pointer;
+  cursor: grab;
 }
 
-.part.selected > g:first-child {
-  outline: 2px dashed var(--accent);
+.part:active {
+  cursor: grabbing;
 }
 
+.part-selection-layer {
+  pointer-events: none;
+}
+
+.part-selection {
+  visibility: hidden;
+}
+
+.part-selection.selected {
+  visibility: visible;
+}
+
+.part-selection rect {
+  fill: rgba(56, 189, 248, 0.1);
+  stroke: #0ea5e9;
+  stroke-width: 2;
+  stroke-dasharray: 6 3;
+}
+
+/*
+ * Solder pads and pin names, drawn for every part that does not name its own
+ * pins. These are always visible - unlike the hit-boxes below, which only
+ * appear on hover - because you cannot wire to a pin you cannot find.
+ */
+.pin-marks {
+  pointer-events: none;
+}
+
+.pin-label-layer,
+.pin-label-overlay {
+  pointer-events: none;
+}
+
+.pin-leads {
+  pointer-events: none;
+}
+
+.pin-lead {
+  stroke: #b6bcc4;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.pin-pad {
+  fill: #c8a02e;
+  stroke: #7a5f12;
+  stroke-width: 0.6;
+}
+
+.pin-label {
+  fill: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0;
+  stroke: none;
+}
+
+.pin-label-background {
+  fill: var(--canvas-bg);
+  fill-opacity: 0.97;
+  stroke: var(--border);
+  stroke-width: 0.5;
+}
+
+.pin-label-leader {
+  stroke: var(--fg-dim);
+  stroke-opacity: 0.55;
+  stroke-width: 0.6;
+}
+
+/*
+ * Pin hit-boxes stay invisible until they are wanted. Board artwork already
+ * draws its own header holes, so painting a marker on all 85 of a Mega's pins
+ * buries the board under dots. `transparent` still takes pointer events, so
+ * the pins remain clickable while hidden.
+ */
 .pin {
+  fill: transparent;
+  stroke: none;
+  cursor: crosshair;
+  transition: opacity 0.1s, r 0.1s;
+}
+
+.wire-junction-mark {
+  fill: #17212b;
+  stroke: #fff;
+  stroke-width: 1.75;
+  pointer-events: none;
+}
+
+/* Hovering a part offers up its pins; drawing a wire offers up all of them. */
+.part-pins.pins-visible .pin,
+.diagram-canvas.wiring .pin {
   fill: #b8860b;
   stroke: #6b4e00;
   stroke-width: 0.5;
   opacity: 0.55;
-  cursor: crosshair;
-  transition: opacity 0.1s, r 0.1s;
 }
 
 .pin:hover {
   opacity: 1;
   fill: var(--accent);
+  stroke: none;
   r: 6;
 }
 
+/*
+ * A wire is drawn in three passes: a dark casing, the coloured conductor on
+ * top of it, and a blob at each end sitting on the pad. Only the invisible
+ * .wire-hit takes the pointer, so the drawn cable can stay slim while still
+ * being easy to grab.
+ */
+.wire,
+.wire-casing,
+.wire-end {
+  pointer-events: none;
+}
+
 .wire {
-  pointer-events: stroke;
+  transition: filter 0.15s, stroke-width 0.15s;
+}
+
+.wire-casing {
+  stroke: rgba(0, 0, 0, 0.28);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .wire-casing {
+    stroke: rgba(0, 0, 0, 0.55);
+  }
+}
+
+.wire-end {
+  stroke: rgba(0, 0, 0, 0.35);
+  stroke-width: 0.8;
+}
+
+.wire-hit {
+  cursor: grab;
+}
+
+.wire-hit:active {
+  cursor: grabbing;
+}
+
+.wire-hover {
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.7));
+  stroke-width: 4.5;
+}
+
+.wire-selected {
+  filter: drop-shadow(0 0 5px rgba(56, 189, 248, 0.9));
+  stroke-width: 4.5;
+}
+
+.wire-handle {
+  fill: var(--accent);
+  stroke: #fff;
+  stroke-width: 1.5;
+  pointer-events: all;
+  cursor: grab;
+  transition: r 0.1s;
+}
+
+.marquee-selection {
+  fill: rgba(56, 189, 248, 0.14);
+  stroke: #38bdf8;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
+  pointer-events: none;
+}
+
+.wire-handle:hover {
+  r: 7;
+}
+
+.wire-handle:active {
+  cursor: grabbing;
+}
+
+/* Sits on the canvas rather than the toolbar: it acts on the diagram. */
+.canvas-button {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-color: var(--accent-dim);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  min-height: 36px;
+}
+
+.canvas-button .icon {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--accent);
 }
 
 .canvas-hint {
@@ -299,6 +559,8 @@ button.primary:hover:not(:disabled) {
   background: color-mix(in srgb, var(--bg-panel) 80%, transparent);
   padding: 4px 8px;
   border-radius: 5px;
+  max-width: calc(100% - 24px);
+  line-height: 1.7;
 }
 
 kbd {
@@ -316,12 +578,13 @@ kbd {
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 240px;
+  width: 252px;
+  max-width: calc(100% - 24px);
   max-height: calc(100% - 24px);
   overflow: auto;
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
 }
 
@@ -329,17 +592,27 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
   font-weight: 600;
+  gap: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-panel);
+}
+
+#inspector-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .inspector-row {
   display: grid;
-  grid-template-columns: 1fr 1.2fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
   gap: 8px;
   align-items: center;
-  padding: 6px 10px;
+  padding: 7px 12px;
 }
 
 .inspector-row label {
@@ -359,12 +632,14 @@ kbd {
   color: var(--fg);
   border: 1px solid var(--border);
   border-radius: 4px;
+  min-width: 0;
+  min-height: 30px;
 }
 
 .inspector-actions {
   display: flex;
   gap: 6px;
-  padding: 10px;
+  padding: 12px;
   border-top: 1px solid var(--border);
 }
 
@@ -377,8 +652,8 @@ kbd {
 /* ---- serial ---- */
 
 .pane-serial {
-  height: 200px;
-  border-top: 1px solid var(--border);
+  height: var(--serial-height, 200px);
+  overflow: hidden;
 }
 
 .serial-output {
@@ -395,8 +670,8 @@ kbd {
 
 .serial-input {
   display: flex;
-  gap: 6px;
-  padding: 6px;
+  gap: 8px;
+  padding: 8px 12px;
   border-top: 1px solid var(--border);
 }
 
@@ -409,6 +684,7 @@ kbd {
   color: var(--fg);
   border: 1px solid var(--border);
   border-radius: 6px;
+  min-width: 0;
 }
 
 .problem-list {
@@ -458,8 +734,11 @@ dialog {
   color: var(--fg);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 16px;
+  padding: 20px;
   width: min(420px, 90vw);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 28%);
 }
 
 dialog::backdrop {
@@ -467,8 +746,9 @@ dialog::backdrop {
 }
 
 dialog h2 {
-  margin: 0 0 10px;
-  font-size: 16px;
+  margin: 0 0 16px;
+  font-size: 18px;
+  font-weight: 600;
 }
 
 #part-search {
@@ -486,16 +766,20 @@ dialog h2 {
   list-style: none;
   margin: 0 0 12px;
   padding: 0;
-  max-height: 300px;
+  max-height: min(360px, 55dvh);
   overflow: auto;
 }
 
 #part-list li {
-  padding: 7px 10px;
-  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 6px;
   cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 12.5px;
+  /* The names read as words now, not as identifiers. */
+  font-family: var(--font-ui);
+  font-size: 13.5px;
 }
 
 #part-list li:hover {
@@ -505,12 +789,601 @@ dialog h2 {
 
 @media (max-width: 900px) {
   .layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1.2fr);
+  }
+
+  .splitter-x {
+    display: none;
   }
 
   .pane-code {
     border-right: none;
     border-bottom: 1px solid var(--border);
+  }
+
+  .toolbar-group.right {
+    margin-left: 0;
+  }
+}
+
+/* Pressable spots drawn over a part's artwork, e.g. the board reset button. */
+.part-control {
+  fill: transparent;
+  stroke: none;
+  cursor: pointer;
+}
+
+.part-control:hover {
+  fill: rgb(255 255 255 / 22%);
+}
+
+.part-control:active {
+  fill: rgb(0 0 0 / 35%);
+}
+
+/* ---- dashboard ---- */
+
+.dashboard {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: auto;
+  background: var(--bg);
+}
+
+.dashboard[hidden] {
+  display: none;
+}
+
+.dashboard-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: clamp(24px, 5vw, 48px) 24px 64px;
+}
+
+.dashboard-header {
+  margin-bottom: 32px;
+}
+
+.dashboard-header h1 {
+  margin: 24px 0 4px;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.dashboard-header p {
+  margin: 0;
+  color: var(--fg-dim);
+}
+
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+  gap: 20px;
+}
+
+.board-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.board-card:hover,
+.board-card:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.board-card:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.board-card h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.board-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 130px;
+  padding: 8px;
+  background: var(--canvas-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.board-preview {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.board-specs {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.board-specs dt {
+  color: var(--fg-dim);
+}
+
+.board-specs dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.board-footer {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-dim);
+  margin-top: auto;
+  overflow-wrap: anywhere;
+}
+
+.board-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--bg);
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+/* ---- part picker ---- */
+
+.part-icon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 30px;
+  /* The artwork is drawn to fill its own box; letterbox it instead of
+     stretching, so a long board still looks like a long board. */
+  object-fit: contain;
+  overflow: visible;
+}
+
+.part-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- colour swatches ---- */
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  /* The colour is the label, so nothing inside must show through it. */
+  font-size: 0;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.swatch:hover {
+  transform: scale(1.12);
+}
+
+.swatch.selected {
+  /* A ring outside the swatch, so the colour itself is never covered. */
+  border-color: var(--bg-panel);
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+/* ---- colour picker ---- */
+
+.color-field {
+  position: relative;
+}
+
+.color-trigger {
+  width: 100%;
+  height: 30px;
+  border-radius: 6px;
+}
+
+.color-popover {
+  /* Against the viewport, so the inspector's own scrolling cannot clip it. */
+  position: fixed;
+  z-index: 60;
+  padding: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
+}
+
+.color-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 132px;
+}
+
+/*
+ * Hue runs around the disc and saturation towards the middle. The conic
+ * gradient starts at twelve o'clock and runs clockwise, which is the angle
+ * `hueAt` reads back.
+ */
+.color-wheel {
+  position: relative;
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  cursor: crosshair;
+  touch-action: none;
+  background:
+    radial-gradient(circle closest-side, #fff, rgba(255, 255, 255, 0) 100%),
+    conic-gradient(
+      from 0deg,
+      #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00
+    );
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.color-marker {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.color-value {
+  width: 100%;
+  margin: 0;
+}
+
+.color-hex {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-transform: lowercase;
+}
+
+.color-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+/* ---- library manager ---- */
+
+#library-manager {
+  /* Three lists in one dialog; the part picker's width is not enough. */
+  width: min(620px, 92vw);
+  max-height: 86vh;
+  overflow: auto;
+}
+
+#library-manager.dropping {
+  outline: 2px dashed var(--accent);
+  outline-offset: -6px;
+}
+
+#library-manager h3 {
+  margin: 16px 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+}
+
+.library-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.library-search {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font: inherit;
+  background: var(--bg-raised);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.library-status {
+  margin: 8px 0 0;
+  min-height: 18px;
+  font-size: 12.5px;
+  color: var(--fg-dim);
+}
+
+.library-status.busy {
+  color: var(--accent);
+}
+
+.library-results,
+.library-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.library-results li,
+.library-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 6px;
+}
+
+.library-results li:nth-child(odd),
+.library-list li:nth-child(odd) {
+  background: var(--bg-raised);
+}
+
+.library-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.library-name {
+  font-size: 13.5px;
+}
+
+.library-detail {
+  font-size: 11.5px;
+  color: var(--fg-dim);
+  /* One line: a library's own blurb can run to a paragraph. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A project asking for something this machine does not have. */
+.library-missing .library-name::before {
+  content: '! ';
+  color: var(--warning);
+}
+
+.library-missing .library-detail {
+  color: var(--warning);
+}
+
+.library-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.library-empty {
+  font-size: 12.5px;
+  color: var(--fg-dim);
+}
+
+.library-close {
+  margin-top: 14px;
+  text-align: right;
+}
+
+/* ---- sketch files ---- */
+
+/*
+ * A file tab is two controls in one: the tab itself and its close button.
+ * The wrapper carries the tab's look so the pair reads as a single tab.
+ */
+/*
+ * The strip holds as many tabs as the sketch has files, so it scrolls sideways
+ * rather than wrapping: a wrapped strip changed the pane's height and pushed
+ * "Build log" onto a second line as soon as one file was added.
+ */
+#code-tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+#code-tabs .tab {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tab-wrap {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  border-radius: 5px 5px 0 0;
+}
+
+.tab-wrap.active {
+  background: var(--bg-panel);
+  border-bottom: 2px solid var(--accent);
+}
+
+.tab-wrap .tab {
+  padding-right: 2px;
+}
+
+.tab-wrap.active .tab {
+  border-bottom: none;
+}
+
+.tab-close {
+  background: none;
+  border: none;
+  padding: 0 7px 0 2px;
+  color: var(--fg-dim);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  /* Hidden until the tab is wanted, so the strip stays quiet. */
+  opacity: 0;
+}
+
+.tab-wrap:hover .tab-close,
+.tab-wrap.active .tab-close,
+.tab-close:focus-visible {
+  opacity: 1;
+}
+
+.tab-close:hover {
+  color: var(--danger);
+}
+
+/*
+ * Pinned to the right of the strip: it is the only way to add a file, and it
+ * scrolled out of reach as soon as the sketch had enough files to need the
+ * scrollbar.
+ */
+.tab-add {
+  position: sticky;
+  right: 0;
+  margin-left: auto;
+  padding: 6px 10px;
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+  background: var(--bg);
+  box-shadow: -6px 0 6px -4px var(--bg);
+}
+
+.tab-add:hover {
+  color: var(--accent);
+}
+
+#file-adder {
+  width: min(360px, 92vw);
+}
+
+#file-name {
+  width: 100%;
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--bg-raised);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.file-error {
+  min-height: 17px;
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--danger);
+}
+
+.file-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* ---- sound ---- */
+
+#btn-mute {
+  padding: 6px 9px;
+  line-height: 1;
+}
+
+#btn-mute.muted {
+  /* Dimmed rather than hidden: it must stay obvious that sound is off. */
+  color: var(--fg-dim);
+  opacity: 0.75;
+}
+
+@media (max-width: 600px) {
+  .toolbar {
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .toolbar > .brand {
+    width: 100%;
+  }
+
+  .toolbar-group {
+    flex-wrap: wrap;
+  }
+
+  #select-example {
+    max-width: min(220px, calc(100vw - 20px));
+  }
+
+  .status {
+    min-width: 0;
+    max-width: 16ch;
+    text-align: left;
+  }
+
+  .canvas-hint {
+    font-size: 10px;
+  }
+
+  .dashboard-inner {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .board-grid {
+    gap: 16px;
+  }
+
+  .library-add,
+  .library-results li,
+  .library-list li {
+    flex-wrap: wrap;
+  }
+
+  .library-search {
+    flex-basis: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  .file-button,
+  select,
+  .splitter,
+  .wire,
+  .wire-handle,
+  .pin {
+    transition: none;
   }
 }
