@@ -1,6 +1,5 @@
 /**
- * Serial monitor buffer, implementing the documented `serialMonitor` options
- * (docs/wokwi/01-core.md section 2).
+ * Serial monitor buffer, implementing Wokwi's documented `serialMonitor` options.
  */
 
 import type { SerialMonitorConfig, SerialMonitorNewline } from '../diagram/types.js';

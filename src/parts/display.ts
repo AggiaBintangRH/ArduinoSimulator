@@ -1,6 +1,6 @@
 /**
  * wokwi-7segment and wokwi-buzzer.
- * Pins and attributes per docs/wokwi/02-parts.md.
+ * Pins and attributes follow the Wokwi part reference.
  */
 
 import { registerPart } from '../sim/registry.js';

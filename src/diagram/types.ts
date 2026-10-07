@@ -1,6 +1,6 @@
 /**
  * Types for the Wokwi-compatible `diagram.json` format.
- * Reference: docs/wokwi/01-core.md section 1.
+ * Reference: https://docs.wokwi.com/diagram-format
  */
 
 /** Attribute values are always strings in diagram.json, even numeric ones ("400", "0x27"). */

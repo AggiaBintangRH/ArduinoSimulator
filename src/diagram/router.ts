@@ -7,7 +7,7 @@
  *           instructions after it are measured from the target.
  *
  * The remaining gap between the two runs is filled automatically.
- * Reference: docs/wokwi/01-core.md section 1.
+ * Reference: https://docs.wokwi.com/diagram-format
  */
 
 export interface Point {

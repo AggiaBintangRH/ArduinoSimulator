@@ -1,7 +1,7 @@
 /**
  * Event-driven scheduler with a nanosecond simulation clock.
  *
- * Mirrors the Wokwi chips-api timing model (docs/wokwi/01-core.md section 3):
+ * Mirrors the Wokwi chips-api timing model:
  * parts never poll, they schedule callbacks and react to pin edges.
  */
 

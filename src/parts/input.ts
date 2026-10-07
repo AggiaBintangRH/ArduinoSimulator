@@ -1,6 +1,6 @@
 /**
  * Interactive input parts: pushbutton, slide switch, DIP switch, resistor.
- * Pins and attributes per docs/wokwi/02-parts.md.
+ * Pins and attributes follow the Wokwi part reference.
  */
 
 import { registerPart } from '../sim/registry.js';

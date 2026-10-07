@@ -1,9 +1,9 @@
 /**
  * Ties a diagram, its parts, and the MCU into one runnable simulation.
  *
- * Wokwi supports a single microcontroller per project (docs/wokwi/01-core.md
- * section 7), and this follows that: exactly one board part becomes the clock
- * master, everything else is a peripheral driven by pin events.
+ * Wokwi supports a single microcontroller per project, and this follows that:
+ * exactly one board part becomes the clock master, everything else is a
+ * peripheral driven by pin events.
  */
 
 import type { Diagram, DiagramPart } from '../diagram/types.js';

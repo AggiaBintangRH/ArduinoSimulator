@@ -1,7 +1,7 @@
 /**
  * wokwi-lcd1602 / wokwi-lcd2004 - HD44780 character LCD.
  *
- * Supports both documented wirings (docs/wokwi/02-parts.md):
+ * Supports both documented wirings:
  *   pins: "full" (default) - 4-bit or 8-bit parallel via RS/RW/E/D0-D7
  *   pins: "i2c"            - through a PCF8574 backpack at 0x27
  */

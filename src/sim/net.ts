@@ -1,7 +1,7 @@
 /**
  * Pin and net model.
  *
- * Wokwi does not do SPICE-level analog (docs/wokwi/01-core.md section 3): pins
+ * Wokwi does not do SPICE-level analog: pins
  * drive a digital level or an explicit voltage, and a net resolves those into a
  * single value. This model follows the same simplification:
  *

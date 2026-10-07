@@ -1,8 +1,8 @@
 /**
  * Part runtime API.
  *
- * Deliberately shaped like the Wokwi custom-chips C API (docs/wokwi/01-core.md
- * section 3) so that models port across almost mechanically:
+ * Deliberately shaped like the Wokwi custom-chips C API so that models port
+ * across almost mechanically:
  *
  *   pin_init/pin_mode/pin_read/pin_write/pin_watch   -> ctx.pinInit(...) etc.
  *   timer_init/timer_start/timer_stop                -> ctx.timerInit(...)

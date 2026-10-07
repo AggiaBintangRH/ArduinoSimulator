@@ -3,7 +3,7 @@
  *
  * Wokwi does not solve circuits: each of these computes an output voltage from
  * an attribute and drives it onto its output pin with dacWrite. That is exactly
- * how the real Wokwi parts behave (docs/wokwi/02-parts.md).
+ * how the real Wokwi parts behave.
  */
 
 import { registerPart } from '../sim/registry.js';

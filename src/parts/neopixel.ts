@@ -3,8 +3,7 @@
  * wokwi-led-ring, wokwi-led-matrix.
  *
  * The protocol is timing-encoded on a single wire, so this decodes pulse
- * widths rather than clocked bits. Per docs/wokwi/02-parts.md the colour order
- * is GRB at 800kHz.
+ * widths rather than clocked bits. The documented colour order is GRB at 800kHz.
  */
 
 import { registerPart } from '../sim/registry.js';
